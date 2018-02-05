@@ -10,10 +10,10 @@
 #include "config.h"
 #include <stdlib.h>
 #include "abdispatch.h"
-#include "nc4dispatch.h"
+#include <nc4dispatch.h>
 #include "nc.h"
 
-static NC_Dispatch AB_dispatcher = {
+NC_Dispatch AB_dispatcher = {
 
 NC_FORMATX_UF0,
 

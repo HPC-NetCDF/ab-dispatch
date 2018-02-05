@@ -11,7 +11,8 @@
 #include "config.h"
 #include <stddef.h> /* size_t, ptrdiff_t */
 #include <errno.h>  /* netcdf functions sometimes return system errors */
-#include "ncdispatch.h"
+#include <netcdf.h>
+#include <ncdispatch.h>
 
 #if defined(__cplusplus)
 extern "C" {
