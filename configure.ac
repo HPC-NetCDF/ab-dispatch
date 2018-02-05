@@ -33,5 +33,6 @@ AC_CHECK_FUNCS([strdup])
 
 AC_CONFIG_FILES([Makefile
                  include/Makefile
+                 test/Makefile
                  src/Makefile])
 AC_OUTPUT

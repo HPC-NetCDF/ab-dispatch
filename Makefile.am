@@ -10,5 +10,5 @@ EXTRA_DIST = README.md
 
 # This is the list of subdirs for which Makefiles will be constructed
 # and run.
-SUBDIRS = include src
+SUBDIRS = include src test
 
