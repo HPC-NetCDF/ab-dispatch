@@ -10,6 +10,8 @@
 #include "nc.h"
 #include "nc4internal.h"
 #include "abdispatch.h"
+#include <strings.h>
+#include <libgen.h>
 
 extern int nc4_vararray_add(NC_GRP_INFO_T *grp, NC_VAR_INFO_T *var);
 
@@ -46,40 +48,96 @@ ab_close_file(NC_HDF5_FILE_INFO_T *h5, int abort)
    return NC_NOERR;
 }
 
-#define NUM_TYPES 12 /**< Number of netCDF atomic types. */
+/**
+ * @internal Parse the file name.
+ *
+ * @param path The path passed to nc_open().
+ * @param dirname A pointer that will point to the directory. Must be
+ * freed by caller.
+ * @param a_basename A pointer that will point to the A filename. Must
+ * be freed by caller.
+ * @param b_basename A pointer that will point to the B filename. Must
+ * be freed by caller.
+ * 
+ * @return NC_NOERR No error.
+ * @return NC_ENOMEM Out of memory.
+ * @return NC_EINVAL Name of file must end in .b.
+ * @author Ed Hartnett
+ */
+static int
+ab_parse_path(const char *path, char *dirname, char *a_basename,
+              char *b_basename)
+{
+   char *rindex_char;
+   char *dot_loc;
 
-/** @internal NetCDF atomic type names. */
-static const char nc_type_name_g[NUM_TYPES][NC_MAX_NAME + 1] = {"char", "byte", "short",
-                                                                "int", "float", "double", "ubyte",
-                                                                "ushort", "uint", "int64",
-                                                                "uint64", "string"};
+   /* Find the B file name. */
+   rindex_char = rindex(path, '/');
+   if (!rindex_char)
+      rindex_char = (char *)path;
+   else
+      rindex_char++; /* Skip backslash. */
+   if (!(b_basename = strdup(rindex_char)))
+      return NC_ENOMEM;
+   LOG((3, "b_basename %s", b_basename));
 
-/** @internal NetCDF atomic type sizes. */
-static const int nc_type_size_g[NUM_TYPES] = {sizeof(char), sizeof(char), sizeof(short),
-                                              sizeof(int), sizeof(float), sizeof(double), sizeof(unsigned char),
-                                              sizeof(unsigned short), sizeof(unsigned int), sizeof(long long),
-                                              sizeof(unsigned long long), sizeof(char *)};
+   /* B file name must end in .b. */
+   if (!(dot_loc = rindex(b_basename, '.')))
+      return NC_EINVAL;
+   if (strcmp(dot_loc, ".b"))
+      return NC_EINVAL;
+
+   /* Get the A filename - same as the B filename, but with a .a at
+    * the end. */
+   if (!(a_basename = strdup(b_basename)))
+      return NC_ENOMEM;
+   a_basename[strlen(b_basename) - 1] = 'a';
+
+   /* Find the directory name, if any. */
+   if (!(dirname = strndup(path, strlen(path) - strlen(b_basename))))
+      return NC_ENOMEM;
+   
+   LOG((2, "%s: dirname %s a_basename %s b_basename %s", __func__, dirname,
+        a_basename, b_basename));
+   
+   return NC_NOERR;
+}
 
 /**
- * @internal Open a HDF4 file.
+ * @internal Open an AB format file. The .b file should be given as
+ * the path. A matching .a file will be expected in the same
+ * directory.
  *
  * @param path The file name of the new file.
  * @param mode The open mode flag.
  * @param nc Pointer that gets the NC file info struct.
  *
  * @return ::NC_NOERR No error.
+ * @return NC_ENOMEM Out of memory.
  * @author Ed Hartnett
  */
 static int
 ab_open_file(const char *path, int mode, NC *nc)
 {
    NC_HDF5_FILE_INFO_T *h5;
+   char *dirname;
+   char *b_basename;
+   char *a_basename;
+   
    int retval;
 
    /* Check inputs. */
    assert(nc && path);
-
    LOG((1, "%s: path %s mode %d", __func__, path, mode));
+
+   /* Parse the path. */
+   if ((retval = ab_parse_path(path, dirname, a_basename, b_basename)))
+      return retval;
+
+   /* Free the filename and path. */
+   free(dirname);
+   free(a_basename);
+   free(b_basename);
 
    /* Add necessary structs to hold netcdf-4 file data. */
    if ((retval = nc4_nc4f_list_add(nc, path, mode)))
