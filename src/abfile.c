@@ -31,22 +31,17 @@ ab_close_file(NC_HDF5_FILE_INFO_T *h5, int abort)
 {
    int retval;
 
-   /* assert(h5 && h5->controller->path && h5->root_grp && h5->no_write); */
-   /* LOG((3, "%s: h5->controller->path %s abort %d", __func__, */
-   /*      h5->controller->path, abort)); */
-
-   /* /\* According to the docs, always end define mode on close. *\/ */
-   /* if (h5->flags & NC_INDEF) */
-   /*    h5->flags ^= NC_INDEF; */
+   assert(h5 && h5->root_grp);
+   LOG((3, "%s: abort %d", __func__, abort));
 
    /* Delete all the list contents for vars, dims, and atts, in each
     * group. */
-   /* if ((retval = nc4_rec_grp_del(&h5->root_grp, h5->root_grp))) */
-   /*    return retval; */
+   if ((retval = nc4_rec_grp_del(&h5->root_grp, h5->root_grp)))
+      return retval;
 
    /* Free the nc4_info struct; above code should have reclaimed
       everything else */
-   /* free(h5); */
+   free(h5);
 
    return NC_NOERR;
 }
@@ -78,6 +73,19 @@ static const int nc_type_size_g[NUM_TYPES] = {sizeof(char), sizeof(char), sizeof
 static int
 ab_open_file(const char *path, int mode, NC *nc)
 {
+   NC_HDF5_FILE_INFO_T *h5;
+   int retval;
+
+   /* Check inputs. */
+   assert(nc && path);
+
+   LOG((1, "%s: path %s mode %d", __func__, path, mode));
+
+   /* Add necessary structs to hold netcdf-4 file data. */
+   if ((retval = nc4_nc4f_list_add(nc, path, mode)))
+      return retval;
+   h5 = (NC_HDF5_FILE_INFO_T *)(nc)->dispatchdata;
+   assert(h5 && h5->root_grp);
 
 #ifdef LOGGING
    /* This will print out the names, types, lens, etc of the vars and
@@ -122,8 +130,10 @@ AB_open(const char *path, int mode, int basepe, size_t *chunksizehintp,
    if (mode & ILLEGAL_OPEN_FLAGS)
       return NC_EINVAL;
 
-   /* Open the file. */
+   /* We don't maintain a separate internal ncid for AB format. */
    nc_file->int_ncid = nc_file->ext_ncid;
+
+   /* Open the file. */
    return ab_open_file(path, mode, nc_file);
 }
 
