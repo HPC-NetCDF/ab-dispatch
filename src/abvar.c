@@ -25,7 +25,8 @@ get_ab_vara(NC *nc, int ncid, int varid, const size_t *startp,
    NC_GRP_INFO_T *grp;
    NC_HDF5_FILE_INFO_T *h5;
    NC_VAR_INFO_T *var;
-   int retval, d;
+   /* int  d; */
+   int retval;
 
    /* Find our metadata for this file, group, and var. */
    assert(nc);

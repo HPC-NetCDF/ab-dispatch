@@ -19,89 +19,59 @@ extern int nc4_vararray_add(NC_GRP_INFO_T *grp, NC_VAR_INFO_T *var);
 static const int ILLEGAL_OPEN_FLAGS = (NC_MMAP|NC_64BIT_OFFSET|NC_MPIIO|NC_MPIPOSIX|NC_DISKLESS);
 
 /**
- * @internal This function will free all allocated metadata memory,
- * and close the AB file.
- *
- * @param h5 Pointer to HDF5 file info struct.
- * @param abort True if this is an abort.
- *
- * @return ::NC_NOERR No error.
- * @author Ed Hartnett
- */
-static int
-ab_close_file(NC_HDF5_FILE_INFO_T *h5, int abort)
-{
-   int retval;
-
-   assert(h5 && h5->root_grp);
-   LOG((3, "%s: abort %d", __func__, abort));
-
-   /* Delete all the list contents for vars, dims, and atts, in each
-    * group. */
-   if ((retval = nc4_rec_grp_del(&h5->root_grp, h5->root_grp)))
-      return retval;
-
-   /* Free the nc4_info struct; above code should have reclaimed
-      everything else */
-   free(h5);
-
-   return NC_NOERR;
-}
-
-/**
  * @internal Parse the file name.
  *
  * @param path The path passed to nc_open().
  * @param dirname A pointer that will point to the directory. Must be
  * freed by caller.
- * @param a_basename A pointer that will point to the A filename. Must
- * be freed by caller.
- * @param b_basename A pointer that will point to the B filename. Must
- * be freed by caller.
+ * @param a_basename A pointer to char * that will point to the A
+ * filename. Must be freed by caller.
+ * @param b_basename A pointer to char * that will point to the B
+ * filename. Must be freed by caller.
  * 
  * @return NC_NOERR No error.
  * @return NC_ENOMEM Out of memory.
  * @return NC_EINVAL Name of file must end in .b.
  * @author Ed Hartnett
  */
-static int
-ab_parse_path(const char *path, char *dirname, char *a_basename,
-              char *b_basename)
-{
-   char *rindex_char;
-   char *dot_loc;
+/* static int */
+/* ab_parse_path(const char *path, char **dirname, char **a_basename, */
+/*               char **b_basename) */
+/* { */
+/*    char *rindex_char; */
+/*    char *dot_loc; */
 
-   /* Find the B file name. */
-   rindex_char = rindex(path, '/');
-   if (!rindex_char)
-      rindex_char = (char *)path;
-   else
-      rindex_char++; /* Skip backslash. */
-   if (!(b_basename = strdup(rindex_char)))
-      return NC_ENOMEM;
-   LOG((3, "b_basename %s", b_basename));
+/*    /\* Find the B file name. *\/ */
+/*    rindex_char = rindex(path, '/'); */
+/*    if (!rindex_char) */
+/*       rindex_char = (char *)path; */
+/*    else */
+/*       rindex_char++; /\* Skip backslash. *\/ */
+/*    if (!(*b_basename = strdup(rindex_char))) */
+/*       return NC_ENOMEM; */
+/*    LOG((3, "b_basename %s", *b_basename)); */
 
-   /* B file name must end in .b. */
-   if (!(dot_loc = rindex(b_basename, '.')))
-      return NC_EINVAL;
-   if (strcmp(dot_loc, ".b"))
-      return NC_EINVAL;
+/*    /\* B file name must end in .b. *\/ */
+/*    if (!(dot_loc = rindex(*b_basename, '.'))) */
+/*       return NC_EINVAL; */
+/*    if (strcmp(dot_loc, ".b")) */
+/*       return NC_EINVAL; */
 
-   /* Get the A filename - same as the B filename, but with a .a at
-    * the end. */
-   if (!(a_basename = strdup(b_basename)))
-      return NC_ENOMEM;
-   a_basename[strlen(b_basename) - 1] = 'a';
+/*    /\* Get the A filename - same as the B filename, but with a .a at */
+/*     * the end. *\/ */
+/*    if (!(*a_basename = strdup(*b_basename))) */
+/*       return NC_ENOMEM; */
+/*    *a_basename[strlen(*b_basename) - 1] = 'a'; */
 
-   /* Find the directory name, if any. */
-   if (!(dirname = strndup(path, strlen(path) - strlen(b_basename))))
-      return NC_ENOMEM;
+/*    /\* Find the directory name, if any. *\/ */
+/*    if (!(*dirname = strndup(path, strlen(path) - strlen(*b_basename)))) */
+/*       return NC_ENOMEM; */
    
-   LOG((2, "%s: dirname %s a_basename %s b_basename %s", __func__, dirname,
-        a_basename, b_basename));
+/*    LOG((2, "%s: *dirname %s *a_basename %s *b_basename %s", __func__, *dirname, */
+/*         *a_basename, *b_basename)); */
    
-   return NC_NOERR;
-}
+/*    return NC_NOERR; */
+/* } */
 
 /**
  * @internal Open an AB format file. The .b file should be given as
@@ -120,30 +90,48 @@ static int
 ab_open_file(const char *path, int mode, NC *nc)
 {
    NC_HDF5_FILE_INFO_T *h5;
-   char *dirname;
-   char *b_basename;
-   char *a_basename;
-   
+   AB_FILE_INFO_T *ab_file;
+   char *a_path;
+   char *dot_loc;
    int retval;
 
    /* Check inputs. */
    assert(nc && path);
    LOG((1, "%s: path %s mode %d", __func__, path, mode));
 
-   /* Parse the path. */
-   if ((retval = ab_parse_path(path, dirname, a_basename, b_basename)))
-      return retval;
+   /* B file name must end in .b. */
+   if (!(dot_loc = rindex(path, '.')))
+      return NC_EINVAL;
+   if (strcmp(dot_loc, ".b"))
+      return NC_EINVAL;
 
-   /* Free the filename and path. */
-   free(dirname);
-   free(a_basename);
-   free(b_basename);
-
-   /* Add necessary structs to hold netcdf-4 file data. */
+   /* Get the A file name. */
+   if (!(a_path = strdup(path)))
+      return NC_ENOMEM;
+   a_path[strlen(path) - 1] = 'a';
+   
+   /* Add necessary structs to hold file metadata. */
    if ((retval = nc4_nc4f_list_add(nc, path, mode)))
       return retval;
    h5 = (NC_HDF5_FILE_INFO_T *)(nc)->dispatchdata;
    assert(h5 && h5->root_grp);
+   h5->no_write = NC_TRUE;   
+
+   /* Allocate data to hold AB specific file data. */
+   if (!(ab_file = malloc(sizeof(AB_FILE_INFO_T))))
+      return NC_ENOMEM;
+   h5->format_file_info = ab_file;
+
+   /* Open the A file. */
+   if (!(ab_file->a_file = fopen(a_path, "r")))
+      return NC_EIO;
+
+   /* Open the B file. */
+   if (!(ab_file->b_file = fopen(path, "r")))
+      return NC_EIO;
+
+   /* Free the a filename. */
+   free(a_path);
 
 #ifdef LOGGING
    /* This will print out the names, types, lens, etc of the vars and
@@ -210,6 +198,7 @@ AB_close(int ncid)
    NC_GRP_INFO_T *grp;
    NC *nc;
    NC_HDF5_FILE_INFO_T *h5;
+   AB_FILE_INFO_T *ab_file;
    int retval;
 
    LOG((1, "%s: ncid 0x%x", __func__, ncid));
@@ -217,11 +206,26 @@ AB_close(int ncid)
    /* Find our metadata for this file. */
    if ((retval = nc4_find_nc_grp_h5(ncid, &nc, &grp, &h5)))
       return retval;
-/*   assert(nc && h5 && grp && !grp->parent);*/
+   assert(nc && h5 && h5->format_file_info);
 
-   /* Call the nc4 close. */
-   if ((retval = ab_close_file(h5, 0)))
+   /* Get the AB specific info. */
+   ab_file = h5->format_file_info;
+
+   /* Close the A/B files. */
+   fclose(ab_file->a_file);
+   fclose(ab_file->b_file);
+
+   /* Free AB file info struct. */
+   free(h5->format_file_info);
+
+   /* Delete all the list contents for vars, dims, and atts, in each
+    * group. */
+   if ((retval = nc4_rec_grp_del(&h5->root_grp, h5->root_grp)))
       return retval;
+
+   /* Free the nc4_info struct; above code should have reclaimed
+      everything else */
+   free(h5);
 
    return NC_NOERR;
 }

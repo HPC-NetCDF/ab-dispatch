@@ -13,6 +13,15 @@
 #include <netcdf.h>
 #include <ncdispatch.h>
 
+/* This is the metadata we need to keep track of for each
+   netcdf-4/HDF5 file. */
+typedef struct  AB_FILE_INFO
+{
+   FILE *a_file;
+   FILE *b_file;
+} AB_FILE_INFO_T;
+
+
 #if defined(__cplusplus)
 extern "C" {
 #endif
