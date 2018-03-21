@@ -2,4 +2,4 @@
 
 # Ed Hartnett
 
-noinst_HEADERS = abdispatch.h
+noinst_HEADERS = abdispatch.h ablogging.h

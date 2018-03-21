@@ -26,16 +26,23 @@ AC_PROG_CC
 AC_DEFINE([USE_HDF4], 1, [Set for netCDF headers.])
 AC_DEFINE([USE_NETCDF4], 1, [Set for netCDF headers.])
 
+# Does the user want to enable netcdf-4 logging?
+AC_MSG_CHECKING([whether logging is enabled])
+AC_ARG_ENABLE([logging],
+              [AS_HELP_STRING([--enable-logging],
+                              [Enable logging capability - for developers only  .])])
+test "x$enable_logging" = xyes || enable_logging=no
+AC_MSG_RESULT([$enable_logging])
+if test "x$enable_logging" = xyes; then
+   AC_DEFINE([AB_LOGGING], 1, [If true, turn on AB logging.])
+   AC_DEFINE([LOGGING], 1, [If true, turn on netCDF logging.])
+fi
+
 # Checks for libraries.
 AC_CHECK_LIB(netcdf, nc_def_user_format)
 if test x${ac_cv_lib_netcdf_nc_def_user_format} != xyes; then
    AC_MSG_ERROR([Must have netcdf])
 fi
-
-# Needed for HDF4, will be eliminated when AB format is used.
-AC_CHECK_LIB([df], [Hclose], [], [AC_MSG_ERROR([Can't find or link to the hdf4 df library. See config.log for errors.])])
-AC_CHECK_LIB([mfhdf], [SDcreate], [], [AC_MSG_ERROR([Can't find or link to the hdf4 mfhdf library. See config.log for errors.])])
-AC_CHECK_LIB([jpeg], [jpeg_set_quality], [], [AC_MSG_ERROR([Can't find or link to the jpeg library (required by hdf4). See config.log for errors.])])
 
 # Checks for header files.
 AC_CHECK_HEADERS([stddef.h stdlib.h])

@@ -10,7 +10,6 @@
 #include "nc.h"
 #include "nc4internal.h"
 #include "abdispatch.h"
-#include <mfhdf.h>
 
 extern int nc4_vararray_add(NC_GRP_INFO_T *grp, NC_VAR_INFO_T *var);
 
@@ -32,22 +31,22 @@ ab_close_file(NC_HDF5_FILE_INFO_T *h5, int abort)
 {
    int retval;
 
-   assert(h5 && h5->controller->path && h5->root_grp && h5->no_write);
-   LOG((3, "%s: h5->controller->path %s abort %d", __func__,
-        h5->controller->path, abort));
+   /* assert(h5 && h5->controller->path && h5->root_grp && h5->no_write); */
+   /* LOG((3, "%s: h5->controller->path %s abort %d", __func__, */
+   /*      h5->controller->path, abort)); */
 
-   /* According to the docs, always end define mode on close. */
-   if (h5->flags & NC_INDEF)
-      h5->flags ^= NC_INDEF;
+   /* /\* According to the docs, always end define mode on close. *\/ */
+   /* if (h5->flags & NC_INDEF) */
+   /*    h5->flags ^= NC_INDEF; */
 
    /* Delete all the list contents for vars, dims, and atts, in each
     * group. */
-   if ((retval = nc4_rec_grp_del(&h5->root_grp, h5->root_grp)))
-      return retval;
+   /* if ((retval = nc4_rec_grp_del(&h5->root_grp, h5->root_grp))) */
+   /*    return retval; */
 
    /* Free the nc4_info struct; above code should have reclaimed
       everything else */
-   free(h5);
+   /* free(h5); */
 
    return NC_NOERR;
 }
@@ -150,10 +149,10 @@ AB_close(int ncid)
    /* Find our metadata for this file. */
    if ((retval = nc4_find_nc_grp_h5(ncid, &nc, &grp, &h5)))
       return retval;
-   assert(nc && h5 && grp && !grp->parent);
+/*   assert(nc && h5 && grp && !grp->parent);*/
 
    /* Call the nc4 close. */
-   if ((retval = ab_close_file(grp->nc4_info, 0)))
+   if ((retval = ab_close_file(h5, 0)))
       return retval;
 
    return NC_NOERR;
