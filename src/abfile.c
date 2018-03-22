@@ -11,67 +11,353 @@
 #include "nc4internal.h"
 #include "abdispatch.h"
 #include <strings.h>
+#include <math.h>
 #include <libgen.h>
+
+#define AB_DIMSIZE_STRING "i/jdm ="
+#define AB_MAX_DIM_DIGITS 10
+#define AB_NDIMS3 3
+#define TIME_NAME "day"
+#define I_NAME "i"
+#define J_NAME "j"
 
 extern int nc4_vararray_add(NC_GRP_INFO_T *grp, NC_VAR_INFO_T *var);
 
 /** @internal These flags may not be set for open mode. */
 static const int ILLEGAL_OPEN_FLAGS = (NC_MMAP|NC_64BIT_OFFSET|NC_MPIIO|NC_MPIPOSIX|NC_DISKLESS);
 
+static void
+trim(char *s)
+{
+    char *p = s;
+    int l = strlen(p);
+
+    while(isspace(p[l - 1]))
+       p[--l] = 0;
+    while(*p && isspace(*p))
+       ++p, --l;
+
+    memmove(s, p, l + 1);
+}   
+
 /**
- * @internal Parse the file name.
+ * @internal Parse the B file for metadata info.
  *
- * @param path The path passed to nc_open().
- * @param dirname A pointer that will point to the directory. Must be
- * freed by caller.
- * @param a_basename A pointer to char * that will point to the A
- * filename. Must be freed by caller.
- * @param b_basename A pointer to char * that will point to the B
- * filename. Must be freed by caller.
- * 
- * @return NC_NOERR No error.
- * @return NC_ENOMEM Out of memory.
- * @return NC_EINVAL Name of file must end in .b.
+ * @param h5 Pointer to file info.
+ * @param num_header_atts Pointer that gets the number of header
+ * attributes.
+ * @param header_att Pointer to an array of fixed size which gets the
+ * header atts.
+ * @param var_name Pointer that gets variable name.
+ * @param t_len Pointer that gets length of time dimension.
+ * @param i_len Pointer that gets length of the i dimension.
+ * @param j_len Pointer that gets length of the j dimension.
+ * @param time Pointer to a pointer that gets array of time values,
+ * of length t_len. Must be freed by caller.
+ * @param span Pointer to a pointer that gets array of span values,
+ * of length t_len. Must be freed by caller.
+ * @param min Pointer to a pointer that gets array of minimum values,
+ * of length t_len. Must be freed by caller.
+ * @param max Pointer to a pointer that gets array of maximum values,
+ * of length t_len. Must be freed by caller.
+ *
  * @author Ed Hartnett
  */
-/* static int */
-/* ab_parse_path(const char *path, char **dirname, char **a_basename, */
-/*               char **b_basename) */
-/* { */
-/*    char *rindex_char; */
-/*    char *dot_loc; */
+static int
+parse_b_file(NC_HDF5_FILE_INFO_T *h5, int *num_header_atts,
+             char header_att[MAX_HEADER_ATTS][MAX_B_LINE_LEN],
+             char *var_name, int *t_len, int *i_len, int *j_len, float **time,
+             float **span, float **min, float **max)
+{
+   AB_FILE_INFO_T *ab_file;
+   char line[MAX_B_LINE_LEN + 1];
+   int header = 1;
+   int time_start_pos = 0;
+   int time_count = 0;
 
-/*    /\* Find the B file name. *\/ */
-/*    rindex_char = rindex(path, '/'); */
-/*    if (!rindex_char) */
-/*       rindex_char = (char *)path; */
-/*    else */
-/*       rindex_char++; /\* Skip backslash. *\/ */
-/*    if (!(*b_basename = strdup(rindex_char))) */
-/*       return NC_ENOMEM; */
-/*    LOG((3, "b_basename %s", *b_basename)); */
+   /* Check inputs. */
+   assert(h5 && h5->format_file_info && t_len && i_len && j_len && num_header_atts
+          && header_att && var_name && time && span && min && max);
 
-/*    /\* B file name must end in .b. *\/ */
-/*    if (!(dot_loc = rindex(*b_basename, '.'))) */
-/*       return NC_EINVAL; */
-/*    if (strcmp(dot_loc, ".b")) */
-/*       return NC_EINVAL; */
+   /* Get the AB-specific file metadata. */
+   ab_file = h5->format_file_info;
+   assert(ab_file->b_file);
 
-/*    /\* Get the A filename - same as the B filename, but with a .a at */
-/*     * the end. *\/ */
-/*    if (!(*a_basename = strdup(*b_basename))) */
-/*       return NC_ENOMEM; */
-/*    *a_basename[strlen(*b_basename) - 1] = 'a'; */
+   /* Start record and header atts count at zero. */
+   *t_len = 0;
+   *num_header_atts = 0;
 
-/*    /\* Find the directory name, if any. *\/ */
-/*    if (!(*dirname = strndup(path, strlen(path) - strlen(*b_basename)))) */
-/*       return NC_ENOMEM; */
+   /* Read the B file line by line. */
+   while(fgets(line, sizeof(line), ab_file->b_file))
+   {
+      /* Is this line blank? */
+      int blank = 1;
+      for (int p = 0; p < strlen(line); p++)
+         if (!isspace(line[p]))
+         {
+            blank = 0;
+            break;
+         }
+
+      /* Skip blank lines. */
+      if (blank)
+         continue;
+
+      /* Have we reached last line of header? */
+      if (!(strncmp(line, AB_DIMSIZE_STRING, sizeof(AB_DIMSIZE_STRING) - 1)))
+      {
+         char *tok = line;
+         char i_val[AB_MAX_DIM_DIGITS + 1];
+         char j_val[AB_MAX_DIM_DIGITS + 1];
+         int tok_count = 0;
+
+         /* Get the i/j values. */
+         while ((tok = strtok(tok, " ")) != NULL)
+         {
+            if (tok_count == 2)
+               strncpy(i_val, tok, AB_MAX_DIM_DIGITS);
+            if (tok_count == 3)
+               strncpy(j_val, tok, AB_MAX_DIM_DIGITS);
+            tok_count++;
+            tok = NULL;
+         }
+         LOG((3, "i_val %s j_val %s", i_val, j_val));
+         sscanf(i_val, "%d", i_len);
+         sscanf(j_val, "%d", j_len);
+
+         /* Remember we are done with header. */
+         header = 0;
+
+      }
+      
+      if (header)
+      {
+         LOG((3, "header = %d %s", header, line));
+         if (*num_header_atts < MAX_HEADER_ATTS)
+         {
+            char hdr[MAX_B_LINE_LEN + 1];
+            /* Lose last char - a line feed. */
+            strncpy(hdr, line, strlen(line) - 1);
+            trim(hdr);
+            LOG((3, "hdr %s!", hdr));
+            strncpy(header_att[*num_header_atts], hdr, MAX_B_LINE_LEN);
+            (*num_header_atts)++;
+         }
+      }
+      else
+      {
+         if (!time_start_pos)
+            time_start_pos = ftell(ab_file->b_file);
+         (*t_len)++;
+      }
+   }
+
+   /* Allocate storage for the time, span, min, and max values. */
+   if (!(*time = malloc(*t_len * sizeof(float))))
+      return NC_ENOMEM;
+   if (!(*span = malloc(*t_len * sizeof(float))))
+      return NC_ENOMEM;
+   if (!(*min = malloc(*t_len * sizeof(float))))
+      return NC_ENOMEM;
+   if (!(*max = malloc(*t_len * sizeof(float))))
+      return NC_ENOMEM;
+
+   /* Now go back and get the time info. */
+   fseek(ab_file->b_file, time_start_pos, SEEK_SET);
+   while(fgets(line, sizeof(line), ab_file->b_file))
+   {
+      char *tok = line;
+      int tok_count = 0;
+      int var_named = 0;
+
+      /* Get the time values. */
+      while ((tok = strtok(tok, " ")) != NULL)
+      {
+         LOG((3, "tok_count %d tok %s", tok_count, tok));
+         if (tok_count == 0 && !var_named)
+         {
+            strncpy(var_name, tok, strlen(tok) - strlen(index(tok, ':')));
+            var_named++;
+         }
+         else if (tok_count == 3)
+         {
+            sscanf(tok, "%f", &(*time)[time_count]);
+         }
+         else if (tok_count == 4)
+         {
+            sscanf(tok, "%f", &(*span)[time_count]);
+         }
+         else if (tok_count == 5)
+         {
+            sscanf(tok, "%f", &(*min)[time_count]);
+         }
+         else if (tok_count == 6)
+         {
+            sscanf(tok, "%f", &(*max)[time_count]);
+         }
+         
+         tok_count++;
+         tok = NULL;
+      }
+      time_count++;
+      LOG((3, "%s", line));
+   }
    
-/*    LOG((2, "%s: *dirname %s *a_basename %s *b_basename %s", __func__, *dirname, */
-/*         *a_basename, *b_basename)); */
+   return NC_NOERR;
+}
+
+/**
+ * @internal Add dimensions for the AB file.
+ *
+ * @param h5 Pointer to file info.
+ *
+ * @author Ed Hartnett
+ */
+static int
+add_ab_global_atts(NC_HDF5_FILE_INFO_T *h5, int num_header_atts,
+                   char header_att[MAX_HEADER_ATTS][MAX_B_LINE_LEN])
+{
+   NC_ATT_INFO_T **att_list;
+   int retval;
    
-/*    return NC_NOERR; */
-/* } */
+   att_list = &h5->root_grp->att;      
+
+   for (int a = 0; a < num_header_atts; a++)
+   {
+      NC_ATT_INFO_T *att;
+      char att_name[NC_MAX_NAME + 1];
+      
+      /* Come up with a name. */
+      sprintf(att_name, "att_%d", a);
+      
+      /* Add to the end of the list of atts. */
+      if ((retval = nc4_att_list_add(att_list, &att)))
+         return retval;
+      att->attnum = h5->root_grp->natts++;
+      att->created = NC_TRUE;
+      
+      /* Learn about this attribute. */
+      if (!(att->name = strndup(att_name, NC_MAX_NAME)))
+         return NC_ENOMEM;
+      att->nc_typeid = NC_CHAR;
+      att->len = sizeof(header_att[a]);;
+      LOG((4, "att->name %s att->nc_typeid %d att->len %d", att->name,
+           att->nc_typeid, att->len));
+      
+      /* Allocate memory to hold the data. */
+      if (!(att->data = malloc(att->len * sizeof(char))))
+         return NC_ENOMEM;
+
+      /* Copy the data. */
+      memcpy(att->data, header_att[a], att->len);
+   }
+   
+   return NC_NOERR;
+}
+
+/**
+ * @internal Add dimensions for the AB file.
+ *
+ * @param h5 Pointer to file info.
+ * @param dim Pointer to array of NC_DIM_INFO_T pointers.
+ *
+ * @author Ed Hartnett
+ */
+static int
+add_ab_dims(NC_HDF5_FILE_INFO_T *h5, NC_DIM_INFO_T **dim, int t_len,
+            int i_len, int j_len)
+{
+   int retval;
+   char dim_name[AB_NDIMS3][NC_MAX_NAME + 1] = {TIME_NAME, I_NAME, J_NAME};
+   
+   for (int d = 0; d < AB_NDIMS3; d++)
+   {
+      if ((retval = nc4_dim_list_add(&h5->root_grp->dim, &dim[d])))
+         return retval;
+      if (!(dim[d]->name = strndup(dim_name[d], NC_MAX_NAME)))
+         return NC_ENOMEM;
+      dim[d]->dimid = h5->root_grp->nc4_info->next_dimid++;
+      dim[d]->hash = hash_fast(dim_name[d], strlen(dim_name[d]));
+   }
+   dim[0]->len = t_len;
+   dim[1]->len = i_len;
+   dim[2]->len = j_len;
+
+   return NC_NOERR;
+}
+
+/**
+ * @internal Add a variable to the metadata structures.
+ *
+ * @param h5 Pointer to file info.
+ * @param var Pointer to the variable.
+ * @param var_name Pointer that gets variable name.
+ * 
+ * @author Ed Hartnett
+ */
+static int
+add_ab_var(NC_HDF5_FILE_INFO_T *h5, NC_VAR_INFO_T **varp, char *var_name,
+           int use_fill_value)
+{
+   NC_VAR_INFO_T *var;   
+   int retval;
+
+   /* Check inputs. */
+   assert(h5 && varp && var_name);
+   
+   /* Create and init a variable metadata struct for the data variable. */
+   if ((retval = nc4_var_add(varp)))
+      return retval;
+   var = *varp;
+   var->varid = h5->root_grp->nvars++;
+   var->created = NC_TRUE;
+   var->written_to = NC_TRUE;
+
+   /* Add the var to the variable array, growing it as needed. */
+   if ((retval = nc4_vararray_add(h5->root_grp, var)))
+      return retval;
+
+   /* Remember var name. */
+   if (!(var->name = strndup(var_name, NC_MAX_NAME)))
+      return NC_ENOMEM;
+
+   /* Create hash for names for quick lookups. */
+   var->hash = hash_fast(var->name, strlen(var->name));
+
+   /* Fill special type_info struct for variable type information. */
+   if (!(var->type_info = calloc(1, sizeof(NC_TYPE_INFO_T)))) 
+      return NC_ENOMEM;
+   var->type_info->nc_typeid = NC_FLOAT;
+
+   /* Indicate that the variable has a pointer to the type */
+   var->type_info->rc++;
+
+   /* Get the size of the type. */
+   if ((retval = nc4_get_typelen_mem(h5, var->type_info->nc_typeid, 0,
+                                     &var->type_info->size))) 
+      return retval;
+
+   /* Allocate storage for the fill value. */
+   if (use_fill_value)
+   {
+      if (!(var->fill_value = malloc(var->type_info->size))) 
+         return NC_ENOMEM;
+      *((float *)var->fill_value) = powf(2, 100);
+   }
+   
+   /* AB files are always contiguous. */
+   var->contiguous = NC_TRUE;
+
+   /* Allocate storage for dimension info in this variable. */
+   var->ndims = AB_NDIMS3;
+   if (!(var->dim = malloc(sizeof(NC_DIM_INFO_T *) * var->ndims))) 
+      return NC_ENOMEM;
+   if (!(var->dimids = malloc(sizeof(int) * var->ndims))) 
+      return NC_ENOMEM;
+   
+   return NC_NOERR;
+}
+
 
 /**
  * @internal Open an AB format file. The .b file should be given as
@@ -90,9 +376,20 @@ static int
 ab_open_file(const char *path, int mode, NC *nc)
 {
    NC_HDF5_FILE_INFO_T *h5;
+   NC_VAR_INFO_T *var;
+   /* NC_VAR_INFO_T *time_var; */
+   NC_DIM_INFO_T *dim[AB_NDIMS3];
    AB_FILE_INFO_T *ab_file;
    char *a_path;
    char *dot_loc;
+   int num_header_atts;
+   char header_att[MAX_HEADER_ATTS][MAX_B_LINE_LEN];
+   int t_len, i_len, j_len;
+   float *time;
+   float *span;
+   float *min;
+   float *max;
+   char var_name[NC_MAX_NAME + 1];
    int retval;
 
    /* Check inputs. */
@@ -115,7 +412,8 @@ ab_open_file(const char *path, int mode, NC *nc)
       return retval;
    h5 = (NC_HDF5_FILE_INFO_T *)(nc)->dispatchdata;
    assert(h5 && h5->root_grp);
-   h5->no_write = NC_TRUE;   
+   h5->no_write = NC_TRUE;
+   h5->root_grp->nc4_info->controller = nc;
 
    /* Allocate data to hold AB specific file data. */
    if (!(ab_file = malloc(sizeof(AB_FILE_INFO_T))))
@@ -130,13 +428,48 @@ ab_open_file(const char *path, int mode, NC *nc)
    if (!(ab_file->b_file = fopen(path, "r")))
       return NC_EIO;
 
-   /* Free the a filename. */
+   /* Parse the B file. */
+   if ((retval = parse_b_file(h5, &num_header_atts, header_att, var_name, &t_len,
+                              &i_len, &j_len, &time, &span, &min, &max)))
+      return retval;
+   LOG((3, "num_header_atts %d var_name %s t_len %d i_len %d j_len %d",
+        num_header_atts, var_name, t_len, i_len, j_len));
+
+   for (int h = 0; h < num_header_atts; h++)
+   {
+      LOG((3, "h %d header_att %s!", h, header_att[h]));
+   }
+   for (int t = 0; t < t_len; t++)
+   {
+      LOG((3, "t %d time %f span %f min %f max %f", t, time[t], span[t],
+           min[t], max[t]));
+   }
+
+   /* Add the global attributes. */
+   if ((retval = add_ab_global_atts(h5, num_header_atts, header_att)))
+      return retval;
+
+   /* Add the dimensions. */
+   if ((retval = add_ab_dims(h5, dim, t_len, i_len, j_len)))
+      return retval;
+
+   /* Add the data variable. */
+   if ((retval = add_ab_var(h5, &var, var_name, 1)))
+      return retval;
+
+   /* Variable attributes. */
+   
+   /* Free resources. */
    free(a_path);
+   free(time);
+   free(span);
+   free(min);
+   free(max);
 
 #ifdef LOGGING
    /* This will print out the names, types, lens, etc of the vars and
       atts in the file, if the logging level is 2 or greater. */
-   /*log_metadata_nc(h5->root_grp->nc4_info->controller);*/
+   log_metadata_nc(h5->root_grp->nc4_info->controller);
 #endif
    return NC_NOERR;
 }

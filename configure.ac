@@ -38,6 +38,10 @@ if test "x$enable_logging" = xyes; then
    AC_DEFINE([LOGGING], 1, [If true, turn on netCDF logging.])
 fi
 
+# These are data files needed for testing.
+AC_CONFIG_LINKS([test/surtmp_100l.a:test/surtmp_100l.a])
+AC_CONFIG_LINKS([test/surtmp_100l.b:test/surtmp_100l.b])
+
 # Checks for libraries.
 AC_CHECK_LIB(netcdf, nc_def_user_format)
 if test x${ac_cv_lib_netcdf_nc_def_user_format} != xyes; then
