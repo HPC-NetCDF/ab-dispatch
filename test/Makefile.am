@@ -15,3 +15,6 @@ AM_LDFLAGS = ${top_builddir}/src/libncab.la
 AB_DISPATCH_TESTS = tst_read1
 check_PROGRAMS = $(AB_DISPATCH_TESTS)
 TESTS = $(AB_DISPATCH_TESTS)
+
+# The test data files.
+EXTRA_DIST = surtmp_100l.b surtmp_100l.a
