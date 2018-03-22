@@ -17,7 +17,12 @@
 #define AB_DIMSIZE_STRING "i/jdm ="
 #define AB_MAX_DIM_DIGITS 10
 #define AB_NDIMS3 3
+#define AB_NDIMS1 1
+#define NUM_AB_VAR_ATTS 4
 #define TIME_NAME "day"
+#define SPAN_NAME "span"
+#define MIN_NAME "min"
+#define MAX_NAME "max"
 #define I_NAME "i"
 #define J_NAME "j"
 
@@ -293,17 +298,24 @@ add_ab_dims(NC_HDF5_FILE_INFO_T *h5, NC_DIM_INFO_T **dim, int t_len,
  * @param var Pointer to the variable.
  * @param var_name Pointer that gets variable name.
  * 
+ * @return NC_NOERR No error.
+ * @return NC_ENOMEM Out of memory.
+ * @return NC_EINVAL Invalid input.
  * @author Ed Hartnett
  */
 static int
 add_ab_var(NC_HDF5_FILE_INFO_T *h5, NC_VAR_INFO_T **varp, char *var_name,
-           int use_fill_value)
+           nc_type xtype, int ndims, const int *dimids, int use_fill_value)
 {
    NC_VAR_INFO_T *var;   
    int retval;
 
    /* Check inputs. */
    assert(h5 && varp && var_name);
+   if (ndims < 0)
+      return NC_EINVAL;
+   if (ndims && !dimids)
+      return NC_EINVAL;
    
    /* Create and init a variable metadata struct for the data variable. */
    if ((retval = nc4_var_add(varp)))
@@ -327,7 +339,7 @@ add_ab_var(NC_HDF5_FILE_INFO_T *h5, NC_VAR_INFO_T **varp, char *var_name,
    /* Fill special type_info struct for variable type information. */
    if (!(var->type_info = calloc(1, sizeof(NC_TYPE_INFO_T)))) 
       return NC_ENOMEM;
-   var->type_info->nc_typeid = NC_FLOAT;
+   var->type_info->nc_typeid = xtype;
 
    /* Indicate that the variable has a pointer to the type */
    var->type_info->rc++;
@@ -348,16 +360,72 @@ add_ab_var(NC_HDF5_FILE_INFO_T *h5, NC_VAR_INFO_T **varp, char *var_name,
    /* AB files are always contiguous. */
    var->contiguous = NC_TRUE;
 
-   /* Allocate storage for dimension info in this variable. */
-   var->ndims = AB_NDIMS3;
+   /* Store dimension info in this variable. */
+   var->ndims = ndims;
    if (!(var->dim = malloc(sizeof(NC_DIM_INFO_T *) * var->ndims))) 
       return NC_ENOMEM;
    if (!(var->dimids = malloc(sizeof(int) * var->ndims))) 
       return NC_ENOMEM;
+   memcpy(var->dimids, dimids, var->ndims * sizeof(float));
+   
    
    return NC_NOERR;
 }
 
+/**
+ * @internal Add attributes to an AB variable.
+ *
+ * @param h5 Pointer to file info.
+ * @param var Pointer to the variable.
+ * @param t_len Length of time dimension, and all variable attribute
+ * arrays.
+ * @param 
+ * @param var_name Pointer that gets variable name.
+ * 
+ * @return NC_NOERR No error.
+ * @return NC_ENOMEM Out of memory.
+ * @author Ed Hartnett
+ */
+static int
+add_ab_var_atts(NC_HDF5_FILE_INFO_T *h5, NC_VAR_INFO_T *var, int t_len,
+                float *time, float *span, float *min, float *max)
+{
+   char att_name[NUM_AB_VAR_ATTS][NC_MAX_NAME + 1] = {TIME_NAME, SPAN_NAME,
+                                                      MIN_NAME, MAX_NAME};
+   float *att_data[NUM_AB_VAR_ATTS] = {time, span, min, max};
+   int retval;
+
+   /* Check inputs. */
+   assert(h5 && var && t_len > 0 && time && span && min && max);
+   
+   for (int a = 0; a < NUM_AB_VAR_ATTS; a++)
+   {
+      NC_ATT_INFO_T *att;   
+      
+      /* Add to the end of the list of atts. */
+      if ((retval = nc4_att_list_add(&var->att, &att)))
+         return retval;
+      att->attnum = var->natts++;
+      att->created = NC_TRUE;
+      
+      /* Add attribute metadata. */
+      if (!(att->name = strndup(att_name[a], NC_MAX_NAME)))
+         return NC_ENOMEM;
+      att->nc_typeid = NC_FLOAT;
+      att->len = t_len;
+      LOG((4, "att->name %s att->nc_typeid %d att->len %d", att->name,
+           att->nc_typeid, att->len));
+      
+      /* Allocate memory to hold the data. */
+      if (!(att->data = malloc(sizeof(float) * att->len)))
+         return NC_ENOMEM;
+      
+      /* Copy the attribute data. */
+      memcpy(att->data, att_data[a], att->len * sizeof(float));
+   }
+   
+   return NC_NOERR;
+}
 
 /**
  * @internal Open an AB format file. The .b file should be given as
@@ -377,7 +445,7 @@ ab_open_file(const char *path, int mode, NC *nc)
 {
    NC_HDF5_FILE_INFO_T *h5;
    NC_VAR_INFO_T *var;
-   /* NC_VAR_INFO_T *time_var; */
+   NC_VAR_INFO_T *time_var;
    NC_DIM_INFO_T *dim[AB_NDIMS3];
    AB_FILE_INFO_T *ab_file;
    char *a_path;
@@ -390,6 +458,8 @@ ab_open_file(const char *path, int mode, NC *nc)
    float *min;
    float *max;
    char var_name[NC_MAX_NAME + 1];
+   int dimids[AB_NDIMS3] = {0, 1, 2};
+   int time_dimid = 0;
    int retval;
 
    /* Check inputs. */
@@ -454,10 +524,16 @@ ab_open_file(const char *path, int mode, NC *nc)
       return retval;
 
    /* Add the data variable. */
-   if ((retval = add_ab_var(h5, &var, var_name, 1)))
+   if ((retval = add_ab_var(h5, &var, var_name, NC_FLOAT, AB_NDIMS3, dimids, 1)))
+      return retval;
+
+   /* Add the coordinate variable. */
+   if ((retval = add_ab_var(h5, &time_var, TIME_NAME, NC_FLOAT, AB_NDIMS1, &time_dimid, 0)))
       return retval;
 
    /* Variable attributes. */
+   if ((retval = add_ab_var_atts(h5, var, t_len, time, span, min, max)))
+      return retval;
    
    /* Free resources. */
    free(a_path);
