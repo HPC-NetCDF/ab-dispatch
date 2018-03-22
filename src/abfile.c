@@ -64,7 +64,8 @@ trim(char *s)
  * @author Ed Hartnett
  */
 static int
-parse_b_file(NC_HDF5_FILE_INFO_T *h5, int *num_header_atts, char header_att[MAX_HEADER_ATTS][MAX_B_LINE_LEN],
+parse_b_file(NC_HDF5_FILE_INFO_T *h5, int *num_header_atts,
+             char header_att[MAX_HEADER_ATTS][MAX_B_LINE_LEN],
              char *var_name, int *t_len, int *i_len, int *j_len, float **time,
              float **span, float **min, float **max)
 {
@@ -75,7 +76,8 @@ parse_b_file(NC_HDF5_FILE_INFO_T *h5, int *num_header_atts, char header_att[MAX_
    int time_count = 0;
 
    /* Check inputs. */
-   assert(h5 && h5->format_file_info && t_len && i_len && j_len);
+   assert(h5 && h5->format_file_info && t_len && i_len && j_len && num_header_atts
+          && header_att && var_name && time && span && min && max);
 
    /* Get the AB-specific file metadata. */
    ab_file = h5->format_file_info;
@@ -204,6 +206,158 @@ parse_b_file(NC_HDF5_FILE_INFO_T *h5, int *num_header_atts, char header_att[MAX_
    return NC_NOERR;
 }
 
+/**
+ * @internal Add dimensions for the AB file.
+ *
+ * @param h5 Pointer to file info.
+ *
+ * @author Ed Hartnett
+ */
+static int
+add_ab_global_atts(NC_HDF5_FILE_INFO_T *h5, int num_header_atts,
+                   char header_att[MAX_HEADER_ATTS][MAX_B_LINE_LEN])
+{
+   NC_ATT_INFO_T **att_list;
+   int retval;
+   
+   att_list = &h5->root_grp->att;      
+
+   for (int a = 0; a < num_header_atts; a++)
+   {
+      NC_ATT_INFO_T *att;
+      char att_name[NC_MAX_NAME + 1];
+      
+      /* Come up with a name. */
+      sprintf(att_name, "att_%d", a);
+      
+      /* Add to the end of the list of atts. */
+      if ((retval = nc4_att_list_add(att_list, &att)))
+         return retval;
+      att->attnum = h5->root_grp->natts++;
+      att->created = NC_TRUE;
+      
+      /* Learn about this attribute. */
+      if (!(att->name = strndup(att_name, NC_MAX_NAME)))
+         return NC_ENOMEM;
+      att->nc_typeid = NC_CHAR;
+      att->len = sizeof(header_att[a]);;
+      LOG((4, "att->name %s att->nc_typeid %d att->len %d", att->name,
+           att->nc_typeid, att->len));
+      
+      /* Allocate memory to hold the data. */
+      if (!(att->data = malloc(att->len * sizeof(char))))
+         return NC_ENOMEM;
+
+      /* Copy the data. */
+      memcpy(att->data, header_att[a], att->len);
+   }
+   
+   return NC_NOERR;
+}
+
+/**
+ * @internal Add dimensions for the AB file.
+ *
+ * @param h5 Pointer to file info.
+ * @param dim Pointer to array of NC_DIM_INFO_T pointers.
+ *
+ * @author Ed Hartnett
+ */
+static int
+add_ab_dims(NC_HDF5_FILE_INFO_T *h5, NC_DIM_INFO_T **dim, int t_len,
+            int i_len, int j_len)
+{
+   int retval;
+   char dim_name[AB_NDIMS3][NC_MAX_NAME + 1] = {TIME_NAME, I_NAME, J_NAME};
+   
+   for (int d = 0; d < AB_NDIMS3; d++)
+   {
+      if ((retval = nc4_dim_list_add(&h5->root_grp->dim, &dim[d])))
+         return retval;
+      if (!(dim[d]->name = strndup(dim_name[d], NC_MAX_NAME)))
+         return NC_ENOMEM;
+      dim[d]->dimid = h5->root_grp->nc4_info->next_dimid++;
+      dim[d]->hash = hash_fast(dim_name[d], strlen(dim_name[d]));
+   }
+   dim[0]->len = t_len;
+   dim[1]->len = i_len;
+   dim[2]->len = j_len;
+
+   return NC_NOERR;
+}
+
+/**
+ * @internal Add a variable to the metadata structures.
+ *
+ * @param h5 Pointer to file info.
+ * @param var Pointer to the variable.
+ * @param var_name Pointer that gets variable name.
+ * 
+ * @author Ed Hartnett
+ */
+static int
+add_ab_var(NC_HDF5_FILE_INFO_T *h5, NC_VAR_INFO_T **varp, char *var_name,
+           int use_fill_value)
+{
+   NC_VAR_INFO_T *var;   
+   int retval;
+
+   /* Check inputs. */
+   assert(h5 && varp && var_name);
+   
+   /* Create and init a variable metadata struct for the data variable. */
+   if ((retval = nc4_var_add(varp)))
+      return retval;
+   var = *varp;
+   var->varid = h5->root_grp->nvars++;
+   var->created = NC_TRUE;
+   var->written_to = NC_TRUE;
+
+   /* Add the var to the variable array, growing it as needed. */
+   if ((retval = nc4_vararray_add(h5->root_grp, var)))
+      return retval;
+
+   /* Remember var name. */
+   if (!(var->name = strndup(var_name, NC_MAX_NAME)))
+      return NC_ENOMEM;
+
+   /* Create hash for names for quick lookups. */
+   var->hash = hash_fast(var->name, strlen(var->name));
+
+   /* Fill special type_info struct for variable type information. */
+   if (!(var->type_info = calloc(1, sizeof(NC_TYPE_INFO_T)))) 
+      return NC_ENOMEM;
+   var->type_info->nc_typeid = NC_FLOAT;
+
+   /* Indicate that the variable has a pointer to the type */
+   var->type_info->rc++;
+
+   /* Get the size of the type. */
+   if ((retval = nc4_get_typelen_mem(h5, var->type_info->nc_typeid, 0,
+                                     &var->type_info->size))) 
+      return retval;
+
+   /* Allocate storage for the fill value. */
+   if (use_fill_value)
+   {
+      if (!(var->fill_value = malloc(var->type_info->size))) 
+         return NC_ENOMEM;
+      *((float *)var->fill_value) = powf(2, 100);
+   }
+   
+   /* AB files are always contiguous. */
+   var->contiguous = NC_TRUE;
+
+   /* Allocate storage for dimension info in this variable. */
+   var->ndims = AB_NDIMS3;
+   if (!(var->dim = malloc(sizeof(NC_DIM_INFO_T *) * var->ndims))) 
+      return NC_ENOMEM;
+   if (!(var->dimids = malloc(sizeof(int) * var->ndims))) 
+      return NC_ENOMEM;
+   
+   return NC_NOERR;
+}
+
 
 /**
  * @internal Open an AB format file. The .b file should be given as
@@ -291,68 +445,17 @@ ab_open_file(const char *path, int mode, NC *nc)
            min[t], max[t]));
    }
 
-   /* Create and init a variable metadata struct for the data variable. */
-   if ((retval = nc4_var_add(&var)))
-      return retval;
-   var->varid = h5->root_grp->nvars++;
-   var->created = NC_TRUE;
-   var->written_to = NC_TRUE;
-
-   /* Add the var to the variable array, growing it as needed. */
-   if ((retval = nc4_vararray_add(h5->root_grp, var)))
+   /* Add the global attributes. */
+   if ((retval = add_ab_global_atts(h5, num_header_atts, header_att)))
       return retval;
 
-   /* Remember var name. */
-   if (!(var->name = strndup(var_name, NC_MAX_NAME)))
-      return NC_ENOMEM;
-
-   /* Create hash for names for quick lookups. */
-   var->hash = hash_fast(var->name, strlen(var->name));
-
-   /* Fill special type_info struct for variable type information. */
-   if (!(var->type_info = calloc(1, sizeof(NC_TYPE_INFO_T)))) 
-      return NC_ENOMEM;
-   var->type_info->nc_typeid = NC_FLOAT;
-
-   /* Indicate that the variable has a pointer to the type */
-   var->type_info->rc++;
-
-   /* Get the size of the type. */
-   if ((retval = nc4_get_typelen_mem(h5, var->type_info->nc_typeid, 0,
-                                     &var->type_info->size))) 
+   /* Add the dimensions. */
+   if ((retval = add_ab_dims(h5, dim, t_len, i_len, j_len)))
       return retval;
 
-   /* Allocate storage for the fill value. */
-   if (!(var->fill_value = malloc(var->type_info->size))) 
-      return NC_ENOMEM;
-   *((float *)var->fill_value) = powf(2, 100);
-
-   /* AB files are always contiguous. */
-   var->contiguous = NC_TRUE;
-
-   /* Allocate storage for dimension info in this variable. */
-   var->ndims = AB_NDIMS3;
-   if (!(var->dim = malloc(sizeof(NC_DIM_INFO_T *) * var->ndims))) 
-      return NC_ENOMEM;
-   if (!(var->dimids = malloc(sizeof(int) * var->ndims))) 
-      return NC_ENOMEM;
-
-   char dim_name[AB_NDIMS3][NC_MAX_NAME + 1] = {TIME_NAME, I_NAME, J_NAME};
-
-   /* The dimensions. */
-   for (int d = 0; d < AB_NDIMS3; d++)
-   {
-      if ((retval = nc4_dim_list_add(&h5->root_grp->dim, &dim[d])))
-         return retval;
-      var->dimids[d] = 0;
-      if (!(dim[d]->name = strndup(dim_name[d], NC_MAX_NAME)))
-         return NC_ENOMEM;
-      dim[d]->hash = hash_fast(dim_name[d], strlen(dim_name[d]));      
-      dim[d]->dimid = d;
-   }
-   dim[0]->len = t_len;
-   dim[1]->len = i_len;
-   dim[2]->len = j_len;
+   /* Add the data variable. */
+   if ((retval = add_ab_var(h5, &var, var_name, 1)))
+      return retval;
 
    /* Variable attributes. */
    
