@@ -21,6 +21,8 @@ typedef struct  AB_FILE_INFO
    FILE *b_file;
 } AB_FILE_INFO_T;
 
+#define MAX_B_LINE_LEN 80
+#define MAX_HEADER_ATTS 10
 
 #if defined(__cplusplus)
 extern "C" {
