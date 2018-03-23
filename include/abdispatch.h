@@ -13,6 +13,16 @@
 #include <netcdf.h>
 #include <ncdispatch.h>
 
+#define AB_NDIMS3 3
+#define AB_NDIMS1 1
+#define NUM_AB_VAR_ATTS 4
+#define TIME_NAME "day"
+#define SPAN_NAME "span"
+#define MIN_NAME "min"
+#define MAX_NAME "max"
+#define I_NAME "i"
+#define J_NAME "j"
+
 /* This is the metadata we need to keep track of for each
    netcdf-4/HDF5 file. */
 typedef struct  AB_FILE_INFO

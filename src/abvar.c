@@ -4,9 +4,10 @@
 
 #include <nc4internal.h>
 #include "nc4dispatch.h"
+#include "abdispatch.h"
 
 /**
- * @internal Get data from an HDF4 SD dataset.
+ * @internal Get coordinate variable data.
  *
  * @param ncid File ID.
  * @param varid Variable ID.
@@ -15,34 +16,90 @@
  * @param mem_nc_type The type of these data after it is read into memory.
  * @param is_long Ignored for HDF4.
  * @param data pointer that gets the data.
+ * @param memtype The type of these data after it is read into memory.
+ *
  * @returns ::NC_NOERR for success
  * @author Ed Hartnett
  */
 static int
-get_ab_vara(NC *nc, int ncid, int varid, const size_t *startp,
-            const size_t *countp, nc_type mem_nc_type, int is_long, void *data)
+get_ab_coord_vara(NC *nc, int ncid, int varid, const size_t *startp,
+                  const size_t *countp, void *data, int memtype)
 {
    NC_GRP_INFO_T *grp;
    NC_HDF5_FILE_INFO_T *h5;
    NC_VAR_INFO_T *var;
-   /* int  d; */
-   int retval;
+   NC_ATT_INFO_T *att = NULL;   
+   int i = 0;
+   int ret;
+
+   /* Check inputs. */
+   assert(nc);
 
    /* Find our metadata for this file, group, and var. */
-   assert(nc);
-   if ((retval = nc4_find_g_var_nc(nc, ncid, varid, &grp, &var)))
-      return retval;
-   h5 = NC4_DATA(nc);
-   assert(grp && h5 && var && var->name);
+   if ((ret = nc4_find_g_var_nc(nc, ncid, varid, &grp, &var)))
+      return ret;
+   h5 = (NC_HDF5_FILE_INFO_T *)(nc)->dispatchdata;
+   assert(grp && h5 && var && var->name && var->ndims == 1);
 
-   /* for (d = 0; d < var->ndims; d++) */
-   /* { */
-   /*    start32[d] = startp[d]; */
-   /*    edge32[d] = countp[d]; */
-   /* } */
+   /* Coordinate data is stored in variable attribute. */
+   if ((ret = nc4_find_grp_att(grp, 1, TIME_NAME, 0, &att))) 
+      return ret;
+   assert(att);
+   printf("att->len %d\n", att->len);
+   float fdata[att->len];
+   memcpy(fdata, att->data, att->len * sizeof(float));
+   for (int c = 0; c < att->len; c++)
+      printf("coord data %d %f\n", c, fdata[c]);
 
-   /* if (SDreaddata(var->sdsid, start32, NULL, edge32, data)) */
-   /*    return NC_EHDFERR; */
+   /* Copy data. */
+   switch (memtype)
+   {
+   case NC_BYTE:
+      for (int v = startp[0]; v < startp[0] + countp[0]; v++)
+         ((signed char *)data)[i++] = fdata[v];
+      break;
+   case NC_CHAR:
+      for (int v = startp[0]; v < startp[0] + countp[0]; v++)
+         ((char *)data)[i++] = fdata[v];
+      break;
+   case NC_SHORT:
+      for (int v = startp[0]; v < startp[0] + countp[0]; v++)
+         ((short *)data)[i++] = fdata[v];
+      break;
+   case NC_INT:
+      for (int v = startp[0]; v < startp[0] + countp[0]; v++)
+         ((int *)data)[i++] = fdata[v];
+      break;
+   case NC_FLOAT:
+      memcpy(data, &((float *)att->data)[startp[0]], countp[0] * sizeof(float));
+      break;
+   case NC_DOUBLE:
+      for (int v = startp[0]; v < startp[0] + countp[0]; v++)
+         ((double *)data)[i++] = fdata[v];
+      break;
+   case NC_UBYTE:
+      for (int v = startp[0]; v < startp[0] + countp[0]; v++)
+         ((unsigned char *)data)[i++] = fdata[v];
+      break;
+   case NC_USHORT:
+      for (int v = startp[0]; v < startp[0] + countp[0]; v++)
+         ((unsigned short *)data)[i++] = fdata[v];
+      break;
+   case NC_UINT:
+      for (int v = startp[0]; v < startp[0] + countp[0]; v++)
+         ((unsigned int *)data)[i++] = fdata[v];
+      break;
+   case NC_INT64:
+      for (int v = startp[0]; v < startp[0] + countp[0]; v++)
+         ((long long int *)data)[i++] = fdata[v];
+      break;
+   case NC_UINT64:
+      for (int v = startp[0]; v < startp[0] + countp[0]; v++)
+         ((unsigned long long int *)data)[i++] = fdata[v];
+      break;
+   default:
+      return NC_EBADTYPE;
+   }
 
    return NC_NOERR;
 }
@@ -67,15 +124,27 @@ AB_get_vara(int ncid, int varid, const size_t *startp,
               const size_t *countp, void *ip, int memtype)
 {
    NC *nc;
-   NC_HDF5_FILE_INFO_T* h5;
+   NC_GRP_INFO_T *grp;
+   NC_HDF5_FILE_INFO_T *h5;
+   NC_VAR_INFO_T *var;
+   int ret;
 
    LOG((2, "%s: ncid 0x%x varid %d memtype %d", __func__, ncid, varid,
         memtype));
 
    if (!(nc = nc4_find_nc_file(ncid, &h5)))
       return NC_EBADID;
+   assert(nc);
 
-   /* Handle HDF4 cases. */
-   return get_ab_vara(nc, ncid, varid, startp, countp, memtype,
-                      0, (void *)ip);
+   /* Find our metadata for this file, group, and var. */
+   if ((ret = nc4_find_g_var_nc(nc, ncid, varid, &grp, &var)))
+      return ret;
+   h5 = nc->dispatchdata;
+   assert(grp && h5 && var && var->name);
+
+   /* Coordinate var is handled specially. */
+   if (!strcmp(var->name, TIME_NAME))
+      return get_ab_coord_vara(nc, ncid, varid, startp, countp, ip, memtype);
+
+   return NC_NOERR;
 }

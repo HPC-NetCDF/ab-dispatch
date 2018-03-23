@@ -9,6 +9,7 @@
 #include <stdio.h>
 
 #define TEST_FILE "surtmp_100l.b"
+#define NDIMS1 1
 #define NDIMS3 3
 #define VAR_NAME "surtmp"
 #define NUM_AB_VAR_ATTS 4
@@ -20,7 +21,7 @@
 #define J_NAME "j"
 #define GLOBAL_ATT_NAME "att_0"
 #define EXPECTED_GLOBAL_ATT "FNMOC, 6hrly, degC"
-#define T_LEN 124
+#define T_LEN 123
 #define I_LEN 258
 #define J_LEN 175
 #define EPSILON .0000001
@@ -51,7 +52,7 @@ float time[T_LEN] = {36495.500000, 36495.750000, 36496.000000, 36496.250000, 364
                      36521.750000, 36522.000000, 36522.250000, 36522.500000, 36522.750000,
                      36523.000000, 36523.250000, 36523.500000, 36523.750000, 36524.000000,
                      36524.250000, 36524.500000, 36524.750000, 36525.000000, 36525.250000,
-                     36525.500000, 36525.750000, 36526.000000, 0.000000};
+                     36525.500000, 36525.750000, 36526.000000};
 float span[T_LEN] = {0.250000, 0.250000, 0.250000, 0.250000, 0.250000, 0.250000, 0.250000,
                      0.250000, 0.250000, 0.250000, 0.250000, 0.250000, 0.250000, 0.250000,
                      0.250000, 0.250000, 0.250000, 0.250000, 0.250000, 0.250000, 0.250000,
@@ -69,7 +70,7 @@ float span[T_LEN] = {0.250000, 0.250000, 0.250000, 0.250000, 0.250000, 0.250000,
                      0.250000, 0.250000, 0.250000, 0.250000, 0.250000, 0.250000, 0.250000,
                      0.250000, 0.250000, 0.250000, 0.250000, 0.250000, 0.250000, 0.250000,
                      0.250000, 0.250000, 0.250000, 0.250000, 0.250000, 0.250000, 0.250000,
-                     0.250000, 0.250000, 0.250000, 0.250000, 0.000000};
+                     0.250000, 0.250000, 0.250000, 0.250000};
 float min[T_LEN] = {9.771892, 10.784987, 9.401492, 6.628430, 4.607868, 3.897291, 4.213979,
                     4.424856, 4.226626, 4.022602, 4.136856, 4.622542, 4.554771, 4.664321,
                     4.907145, 5.749945, 6.398822, 6.757607, 7.123997, 7.393907, 7.355556,
@@ -87,7 +88,7 @@ float min[T_LEN] = {9.771892, 10.784987, 9.401492, 6.628430, 4.607868, 3.897291,
                     5.669068, 5.445779, 5.857729, 6.901529, 7.535413, 5.567883, 4.132844,
                     3.377980, 3.256490, 4.144887, 4.801534, 5.314370, 6.164811, 6.354491,
                     5.865624, 4.060117, 2.045688, 0.771575, -0.416543, -1.899319, -3.700320,
-                    -4.506866, -3.937608, -2.206423, 0.794771, 0.000000};
+                    -4.506866, -3.937608, -2.206423, 0.794771};
 float max[T_LEN] = {28.590569, 28.559731, 28.517277, 28.465023, 28.424067, 28.394974, 28.366539,
                     28.337183, 28.356785, 28.426109, 28.458282, 28.453896, 28.407213, 28.316628,
                     28.222075, 28.125101, 28.057232, 28.017437, 27.993252, 27.984646, 28.025936,
@@ -105,7 +106,7 @@ float max[T_LEN] = {28.590569, 28.559731, 28.517277, 28.465023, 28.424067, 28.39
                     27.017021, 27.041782, 27.097788, 27.184301, 27.271276, 27.359291, 27.424963,
                     27.467936, 27.503365, 27.530914, 27.556900, 27.581215, 28.060846, 27.655060,
                     27.700809, 27.750469, 27.788662, 27.814367, 27.806931, 27.766562, 27.683887,
-                    27.558491, 27.431416, 27.303328, 27.251318, 0.000000};
+                    27.558491, 27.431416, 27.303328, 27.251318};
 
 int
 main()
@@ -121,7 +122,7 @@ main()
    char dim_name[NDIMS3][NC_MAX_NAME + 1] = {TIME_NAME, I_NAME, J_NAME};
    char att_name[NUM_AB_VAR_ATTS][NC_MAX_NAME + 1] = {TIME_NAME, SPAN_NAME,
                                                       MIN_NAME, MAX_NAME};
-   size_t dim_len[NDIMS3] = {124, 258, 175};
+   size_t dim_len[NDIMS3] = {T_LEN, I_LEN, J_LEN};
    char att_value[MAX_B_LINE_LEN + 1];
    float *att_data[NUM_AB_VAR_ATTS] = {time, span, min, max};
    int ret;
@@ -195,7 +196,7 @@ main()
       }
    }
 
-/* Check the dimensions. */
+   /* Check the dimensions. */
    for (int d = 0; d < NDIMS3; d++)
    {
       char dim_name_in[NC_MAX_NAME + 1];
@@ -205,6 +206,49 @@ main()
          return ret;
       if (strcmp(dim_name_in, dim_name[d]) || len_in != dim_len[d])
           return 111;
+   }
+
+   /* Check the coord-var data. */
+   {
+      size_t start[NDIMS1] = {0};
+      size_t count[NDIMS1] = {T_LEN};
+      float data_in[T_LEN];
+      if ((ret = nc_get_vara_float(ncid, 0, start, count, data_in)))
+         return ret;
+      for (int t = 0; t < T_LEN; t++)
+         if (data_in[t] != time[t])
+            return 111;
+      start[0] = 1;
+      count[0] = T_LEN - 1;
+      if ((ret = nc_get_vara_float(ncid, 0, start, count, data_in)))
+         return ret;
+      for (int t = 0; t < T_LEN - 1; t++)
+         if (data_in[t] != time[t + 1])
+            return 111;
+   }
+
+   /* Check the coord-var data as int. */
+   {
+      size_t start[NDIMS1] = {0};
+      size_t count[NDIMS1] = {T_LEN};
+      int data_in[T_LEN];
+      if ((ret = nc_get_vara_int(ncid, 0, start, count, data_in)))
+         return ret;
+      for (int t = 0; t < T_LEN; t++)
+         if (data_in[t] != (int)time[t])
+            return 111;
+   }
+   
+   /* Check the coord-var data as byte. */
+   {
+      size_t start[NDIMS1] = {0};
+      size_t count[NDIMS1] = {T_LEN};
+      signed char data_in[T_LEN];
+      if ((ret = nc_get_vara_schar(ncid, 0, start, count, data_in)))
+         return ret;
+      for (int t = 0; t < T_LEN; t++)
+         if (data_in[t] != (signed char)time[t])
+            return 111;
    }
    
    if ((ret = nc_close(ncid)))

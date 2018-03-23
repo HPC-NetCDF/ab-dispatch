@@ -16,15 +16,6 @@
 
 #define AB_DIMSIZE_STRING "i/jdm ="
 #define AB_MAX_DIM_DIGITS 10
-#define AB_NDIMS3 3
-#define AB_NDIMS1 1
-#define NUM_AB_VAR_ATTS 4
-#define TIME_NAME "day"
-#define SPAN_NAME "span"
-#define MIN_NAME "min"
-#define MAX_NAME "max"
-#define I_NAME "i"
-#define J_NAME "j"
 
 extern int nc4_vararray_add(NC_GRP_INFO_T *grp, NC_VAR_INFO_T *var);
 
@@ -132,7 +123,6 @@ parse_b_file(NC_HDF5_FILE_INFO_T *h5, int *num_header_atts,
 
          /* Remember we are done with header. */
          header = 0;
-
       }
       
       if (header)
@@ -156,6 +146,7 @@ parse_b_file(NC_HDF5_FILE_INFO_T *h5, int *num_header_atts,
          (*t_len)++;
       }
    }
+   (*t_len)--;
 
    /* Allocate storage for the time, span, min, and max values. */
    if (!(*time = malloc(*t_len * sizeof(float))))
@@ -174,6 +165,19 @@ parse_b_file(NC_HDF5_FILE_INFO_T *h5, int *num_header_atts,
       char *tok = line;
       int tok_count = 0;
       int var_named = 0;
+
+      /* Is this line blank? */
+      int blank = 1;
+      for (int p = 0; p < strlen(line); p++)
+         if (!isspace(line[p]))
+         {
+            blank = 0;
+            break;
+         }
+
+      /* Skip blank lines. */
+      if (blank)
+         continue;
 
       /* Get the time values. */
       while ((tok = strtok(tok, " ")) != NULL)
