@@ -227,7 +227,7 @@ main()
             return 111;
    }
 
-   /* Check the coord-var data as int. */
+   /* Check the coord-var data as different types. */
    {
       size_t start[NDIMS1] = {0};
       size_t count[NDIMS1] = {T_LEN};
@@ -237,17 +237,11 @@ main()
       for (int t = 0; t < T_LEN; t++)
          if (data_in[t] != (int)time[t])
             return 111;
-   }
-   
-   /* Check the coord-var data as byte. */
-   {
-      size_t start[NDIMS1] = {0};
-      size_t count[NDIMS1] = {T_LEN};
-      signed char data_in[T_LEN];
-      if ((ret = nc_get_vara_schar(ncid, 0, start, count, data_in)))
+      signed char data_in_schar[T_LEN];
+      if ((ret = nc_get_vara_schar(ncid, 0, start, count, data_in_schar) != NC_ERANGE))
          return ret;
       for (int t = 0; t < T_LEN; t++)
-         if (data_in[t] != (signed char)time[t])
+         if (data_in_schar[t] != (signed char)time[t])
             return 111;
    }
    

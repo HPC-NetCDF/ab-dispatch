@@ -1,5 +1,7 @@
 /**
- * @file
+ * @file @internal Data read functions for the AB dispatch layer.
+ *
+ * @author Ed Hartnett
  */
 
 #include <nc4internal.h>
@@ -7,7 +9,8 @@
 #include "abdispatch.h"
 
 /**
- * @internal Get coordinate variable data.
+ * @internal Get coordinate variable data. AB Format coordinate
+ * variables are always NC_FLOAT32.
  *
  * @param ncid File ID.
  * @param varid Variable ID.
@@ -19,6 +22,7 @@
  * @param memtype The type of these data after it is read into memory.
  *
  * @returns ::NC_NOERR for success
+ * @returns ::NC_ERANGE Range error when converting data.
  * @author Ed Hartnett
  */
 static int
@@ -28,8 +32,9 @@ get_ab_coord_vara(NC *nc, int ncid, int varid, const size_t *startp,
    NC_GRP_INFO_T *grp;
    NC_HDF5_FILE_INFO_T *h5;
    NC_VAR_INFO_T *var;
-   NC_ATT_INFO_T *att = NULL;   
-   int i = 0;
+   NC_ATT_INFO_T *att = NULL;
+   int range_error = 0;
+   /* int i = 0; */
    int ret;
 
    /* Check inputs. */
@@ -51,56 +56,26 @@ get_ab_coord_vara(NC *nc, int ncid, int varid, const size_t *startp,
    for (int c = 0; c < att->len; c++)
       printf("coord data %d %f\n", c, fdata[c]);
 
-   /* Copy data. */
-   switch (memtype)
+   /* If NC_FLOAT is requested, just copy the data. Otherwise, do type
+    * conversion - note that NC_ERANGE may result.*/
+   if (memtype == NC_FLOAT)
    {
-   case NC_BYTE:
-      for (int v = startp[0]; v < startp[0] + countp[0]; v++)
-         ((signed char *)data)[i++] = fdata[v];
-      break;
-   case NC_CHAR:
-      for (int v = startp[0]; v < startp[0] + countp[0]; v++)
-         ((char *)data)[i++] = fdata[v];
-      break;
-   case NC_SHORT:
-      for (int v = startp[0]; v < startp[0] + countp[0]; v++)
-         ((short *)data)[i++] = fdata[v];
-      break;
-   case NC_INT:
-      for (int v = startp[0]; v < startp[0] + countp[0]; v++)
-         ((int *)data)[i++] = fdata[v];
-      break;
-   case NC_FLOAT:
       memcpy(data, &((float *)att->data)[startp[0]], countp[0] * sizeof(float));
-      break;
-   case NC_DOUBLE:
-      for (int v = startp[0]; v < startp[0] + countp[0]; v++)
-         ((double *)data)[i++] = fdata[v];
-      break;
-   case NC_UBYTE:
-      for (int v = startp[0]; v < startp[0] + countp[0]; v++)
-         ((unsigned char *)data)[i++] = fdata[v];
-      break;
-   case NC_USHORT:
-      for (int v = startp[0]; v < startp[0] + countp[0]; v++)
-         ((unsigned short *)data)[i++] = fdata[v];
-      break;
-   case NC_UINT:
-      for (int v = startp[0]; v < startp[0] + countp[0]; v++)
-         ((unsigned int *)data)[i++] = fdata[v];
-      break;
-   case NC_INT64:
-      for (int v = startp[0]; v < startp[0] + countp[0]; v++)
-         ((long long int *)data)[i++] = fdata[v];
-      break;
-   case NC_UINT64:
-      for (int v = startp[0]; v < startp[0] + countp[0]; v++)
-         ((unsigned long long int *)data)[i++] = fdata[v];
-      break;
-   default:
-      return NC_EBADTYPE;
+   }
+   else
+   {
+      if ((ret = nc4_convert_type(att->data + startp[0] * sizeof(float), data, NC_FLOAT,
+                                  memtype, countp[0] - startp[0], &range_error,
+                                  NULL, 0, 0, 0)))
+         return ret;
    }
 
+   /* As per netCDF rules, data are converted even if range errors
+    * occur. But the function returns an error code for this, which
+    * may be ignored by caller. */
+   if (range_error)
+      return NC_ERANGE;
+   
    return NC_NOERR;
 }
 
