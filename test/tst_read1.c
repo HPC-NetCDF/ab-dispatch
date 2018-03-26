@@ -7,6 +7,7 @@
 #include "abdispatch.h"
 #include <nc4dispatch.h>
 #include <stdio.h>
+#include <math.h>
 
 #define TEST_FILE "surtmp_100l.b"
 #define NDIMS1 1
@@ -119,12 +120,13 @@ main()
    size_t len_in;
    int ndims_in, natts_in;
    int dimids_in[NDIMS3];
-   char dim_name[NDIMS3][NC_MAX_NAME + 1] = {TIME_NAME, I_NAME, J_NAME};
+   char dim_name[NDIMS3][NC_MAX_NAME + 1] = {TIME_NAME, J_NAME, I_NAME};
    char att_name[NUM_AB_VAR_ATTS][NC_MAX_NAME + 1] = {TIME_NAME, SPAN_NAME,
                                                       MIN_NAME, MAX_NAME};
-   size_t dim_len[NDIMS3] = {T_LEN, I_LEN, J_LEN};
+   size_t dim_len[NDIMS3] = {T_LEN, J_LEN, I_LEN};
    char att_value[MAX_B_LINE_LEN + 1];
    float *att_data[NUM_AB_VAR_ATTS] = {time, span, min, max};
+   float fill_value = pow(2, 100);
    int ret;
    
    printf("\nTesting AB format dispatch layer...");
@@ -137,7 +139,7 @@ main()
       return ret;
    if ((ret = nc_inq(ncid, &ndims, &nvars, &natts, &unlimdimid)))
       return ret;
-   printf("ndims %d nvars %d natts %d unlimdimid %d\n", ndims, nvars, natts, unlimdimid);
+   /* printf("ndims %d nvars %d natts %d unlimdimid %d\n", ndims, nvars, natts, unlimdimid); */
    if (ndims != 3 || nvars != 2 ||natts != 1 || unlimdimid != -1)
        return 111;
 
@@ -151,12 +153,12 @@ main()
    att_value[len_in] = 0;
    if (strcmp(att_value, EXPECTED_GLOBAL_ATT))
       return 111;
-   printf("att_value %s!\n", att_value);
+   /* printf("att_value %s!\n", att_value); */
 
    /* Check the coord var. */
    if ((ret = nc_inq_varid(ncid, TIME_NAME, &coord_varid)))
       return ret;
-   printf("coord_varid %d\n", coord_varid);
+   /* printf("coord_varid %d\n", coord_varid); */
    if (coord_varid != 0)
       return 111;
    if ((ret = nc_inq_var(ncid, coord_varid, var_name_in, &xtype_in, &ndims_in,
@@ -244,7 +246,208 @@ main()
          if (data_in_schar[t] != (signed char)time[t])
             return 111;
    }
+
+   /* Check one value. */
+   {
+      size_t start[NDIMS3] = {0, 0, 0};
+      size_t count[NDIMS3] = {1, 1, 1};
+      float expected_val = 12.554479;
+      float data_in;
+      if ((ret = nc_get_vara_float(ncid, 1, start, count, &data_in)))
+         return ret;
+      if (abs(data_in - expected_val) > EPSILON)
+         return 111;
+      printf("data_in %f\n", data_in);
+   }
    
+   /* Get all i's. */
+   {
+      size_t start[NDIMS3] = {0, 0, 0};
+      size_t count[NDIMS3] = {1, 1, J_LEN};
+      float data_in[J_LEN];
+      float max = 0, min = 100;
+      float expected_min = 12.554479;
+      float expected_max = 28.332735;
+
+      /* Get data. */
+      if ((ret = nc_get_vara_float(ncid, 1, start, count, data_in)))
+         return ret;
+
+      /* Find min/max. */
+      for (int j = 0; j < J_LEN; j++)
+      {
+         if (data_in[j] < min)
+            min = data_in[j];
+         if (data_in[j] > max)
+            max = data_in[j];
+      }
+
+      /* Did we get correct results? */
+      /* if (abs(min - expected_min) > EPSILON ||abs(max - expected_max) > EPSILON) */
+      /*    return 111; */
+      
+      printf("min %f max %f\n", min, max);
+   }
+
+   /* /\* Get two rows of i. *\/ */
+   /* { */
+   /*    size_t start[NDIMS3] = {0, 0, 0}; */
+   /*    size_t count[NDIMS3] = {1, 2, I_LEN}; */
+   /*    float data_in[2][I_LEN]; */
+   /*    float max = 0, min = 100; */
+   /*    float expected_min = 12.444799; */
+   /*    float expected_max = 28.332735; */
+
+   /*    /\* Get data. *\/ */
+   /*    if ((ret = nc_get_vara_float(ncid, 1, start, count, (float *)data_in))) */
+   /*       return ret; */
+
+   /*    /\* Find min/max. *\/ */
+   /*    for (int j = 0; j < 2; j++) */
+   /*    { */
+   /*       for (int i = 0; i < I_LEN; i++) */
+   /*       { */
+   /*          if (data_in[j][i] < min) */
+   /*             min = data_in[j][i]; */
+   /*          if (data_in[j][i] > max) */
+   /*             max = data_in[j][i]; */
+   /*       } */
+   /*    } */
+
+   /*    /\* Did we get correct results? *\/ */
+   /*    /\* if (abs(min - expected_min) > EPSILON ||abs(max - expected_max) > EPSILON) *\/ */
+   /*    /\*    return 111; *\/ */
+      
+   /*    printf("min %f max %f\n", min, max); */
+   /* } */
+
+   /* /\* Get all j's. *\/ */
+   /* { */
+   /*    size_t start[NDIMS3] = {0, 0, 0}; */
+   /*    size_t count[NDIMS3] = {1, 1, J_LEN}; */
+   /*    float data_in[J_LEN]; */
+   /*    float max = 0, min = 100; */
+   /*    float expected_min = 12.554479; */
+   /*    float expected_max = 28.332735; */
+
+   /*    /\* Get data. *\/ */
+   /*    if ((ret = nc_get_vara_float(ncid, 1, start, count, data_in))) */
+   /*       return ret; */
+
+   /*    /\* Find min/max. *\/ */
+   /*    for (int j = 0; j < J_LEN; j++) */
+   /*    { */
+   /*       if (data_in[j] < min) */
+   /*          min = data_in[j]; */
+   /*       if (data_in[j] > max) */
+   /*          max = data_in[j]; */
+   /*    } */
+
+   /*    /\* Did we get correct results? *\/ */
+   /*    /\* if (abs(min - expected_min) > EPSILON ||abs(max - expected_max) > EPSILON) *\/ */
+   /*    /\*    return 111; *\/ */
+      
+   /*    printf("min %f max %f\n", min, max); */
+   /* } */
+
+   /* /\* Get two rows of i. *\/ */
+   /* { */
+   /*    size_t start[NDIMS3] = {0, 0, 0}; */
+   /*    size_t count[NDIMS3] = {1, 2, J_LEN}; */
+   /*    float data_in[2][J_LEN]; */
+   /*    float max = 0, min = 100; */
+   /*    float expected_min = 12.444799; */
+   /*    float expected_max = 28.332735; */
+
+   /*    /\* Get data. *\/ */
+   /*    if ((ret = nc_get_vara_float(ncid, 1, start, count, (float *)data_in))) */
+   /*       return ret; */
+
+   /*    /\* Find min/max. *\/ */
+   /*    for (int j = 0; j < 2; j++) */
+   /*    { */
+   /*       for (int i = 0; i < I_LEN; i++) */
+   /*       { */
+   /*          if (data_in[j][i] < min) */
+   /*             min = data_in[j][i]; */
+   /*          if (data_in[j][i] > max) */
+   /*             max = data_in[j][i]; */
+   /*       } */
+   /*    } */
+
+   /*    /\* Did we get correct results? *\/ */
+   /*    /\* if (abs(min - expected_min) > EPSILON ||abs(max - expected_max) > EPSILON) *\/ */
+   /*    /\*    return 111; *\/ */
+      
+   /*    printf("min %f max %f\n", min, max); */
+   /* } */
+
+   /* /\* Get a whole record. *\/ */
+   /* { */
+   /*    size_t start[NDIMS3] = {0, 0, 0}; */
+   /*    size_t count[NDIMS3] = {1, I_LEN, J_LEN}; */
+   /*    float data_in[I_LEN][J_LEN]; */
+   /*    float expected_min = 12.444799; */
+   /*    float expected_max = 28.332735; */
+
+   /*    /\* Get data. *\/ */
+   /*    if ((ret = nc_get_vara_float(ncid, 1, start, count, (float *)data_in))) */
+   /*       return ret; */
+
+   /*    /\* Find min/max. *\/ */
+   /*    for (int i = 0; i < I_LEN; i++) */
+   /*    { */
+   /*       float max = 0, min = 100; */
+   /*       for (int j = 0; j < J_LEN; j++) */
+   /*       { */
+   /*          if (data_in[j][i] == fill_value) */
+   /*             continue; */
+   /*          if (data_in[j][i] < min) */
+   /*             min = data_in[j][i]; */
+   /*          if (data_in[j][i] > max) */
+   /*             max = data_in[j][i]; */
+   /*       } */
+   /*       printf("i %d min %f max %f\n", i, min, max); */
+   /*    } */
+
+   /*    /\* Did we get correct results? *\/ */
+   /*    /\* if (abs(min - expected_min) > EPSILON ||abs(max - expected_max) > EPSILON) *\/ */
+   /*    /\*    return 111; *\/ */
+   /* } */
+
+   /* Get a whole record. */
+   {
+      size_t start[NDIMS3] = {0, 0, 0};
+      size_t count[NDIMS3] = {1, J_LEN, I_LEN};
+      float data_in[J_LEN][I_LEN];
+      float expected_min = 12.444799;
+      float expected_max = 28.332735;
+      float max = 0, min = 100;
+
+      /* Get data. */
+      if ((ret = nc_get_vara_float(ncid, 1, start, count, (float *)data_in)))
+         return ret;
+
+      /* Find min/max. */
+      for (int j = 0; j < J_LEN; j++)
+      {
+         for (int i = 0; i < I_LEN; i++)
+         {
+            if (data_in[j][i] == fill_value)
+               continue;
+            if (data_in[j][i] < min)
+               min = data_in[j][i];
+            if (data_in[j][i] > max)
+               max = data_in[j][i];
+         }
+      }
+      printf("min %f max %f\n", min, max);
+
+      /* Did we get correct results? */
+      /* if (abs(min - expected_min) > EPSILON ||abs(max - expected_max) > EPSILON) */
+      /*    return 111; */
+   }
+
    if ((ret = nc_close(ncid)))
       return ret;
 

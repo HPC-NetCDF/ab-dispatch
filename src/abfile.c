@@ -270,15 +270,15 @@ add_ab_global_atts(NC_HDF5_FILE_INFO_T *h5, int num_header_atts,
  *
  * @param h5 Pointer to file info.
  * @param dim Pointer to array of NC_DIM_INFO_T pointers.
+ * @param dim_len Pointer to array of lengths of the dims.
  *
  * @author Ed Hartnett
  */
 static int
-add_ab_dims(NC_HDF5_FILE_INFO_T *h5, NC_DIM_INFO_T **dim, int t_len,
-            int i_len, int j_len)
+add_ab_dims(NC_HDF5_FILE_INFO_T *h5, NC_DIM_INFO_T **dim, int *dim_len)
 {
    int ret;
-   char dim_name[AB_NDIMS3][NC_MAX_NAME + 1] = {TIME_NAME, I_NAME, J_NAME};
+   char dim_name[AB_NDIMS3][NC_MAX_NAME + 1] = {TIME_NAME, J_NAME, I_NAME};
    
    for (int d = 0; d < AB_NDIMS3; d++)
    {
@@ -288,10 +288,8 @@ add_ab_dims(NC_HDF5_FILE_INFO_T *h5, NC_DIM_INFO_T **dim, int t_len,
          return NC_ENOMEM;
       dim[d]->dimid = h5->root_grp->nc4_info->next_dimid++;
       dim[d]->hash = hash_fast(dim_name[d], strlen(dim_name[d]));
+      dim[d]->len = dim_len[d];
    }
-   dim[0]->len = t_len;
-   dim[1]->len = i_len;
-   dim[2]->len = j_len;
 
    return NC_NOERR;
 }
@@ -371,8 +369,15 @@ add_ab_var(NC_HDF5_FILE_INFO_T *h5, NC_VAR_INFO_T **varp, char *var_name,
       return NC_ENOMEM;
    if (!(var->dimids = malloc(sizeof(int) * var->ndims))) 
       return NC_ENOMEM;
-   memcpy(var->dimids, dimids, var->ndims * sizeof(float));
-   
+   for (int d = 0; d < var->ndims; d++)
+   {
+      NC_DIM_INFO_T *dim;
+      NC_GRP_INFO_T *dim_grp;
+      var->dimids[d] = dimids[d];
+      if ((ret = nc4_find_dim(h5->root_grp, dimids[d], &dim, &dim_grp)))
+         return ret;
+      var->dim[d] = dim;
+   }
    
    return NC_NOERR;
 }
@@ -496,6 +501,7 @@ ab_open_file(const char *path, int mode, NC *nc)
    h5->format_file_info = ab_file;
 
    /* Open the A file. */
+   LOG((3, "a_file path %s", a_path));
    if (!(ab_file->a_file = fopen(a_path, "r")))
       return NC_EIO;
 
@@ -525,7 +531,8 @@ ab_open_file(const char *path, int mode, NC *nc)
       return ret;
 
    /* Add the dimensions. */
-   if ((ret = add_ab_dims(h5, dim, t_len, i_len, j_len)))
+   int dim_lens[AB_NDIMS3] = {t_len, j_len, i_len};
+   if ((ret = add_ab_dims(h5, dim, dim_lens)))
       return ret;
 
    /* Add the coordinate variable. */
