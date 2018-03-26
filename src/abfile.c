@@ -219,6 +219,68 @@ parse_b_file(NC_HDF5_FILE_INFO_T *h5, int *num_header_atts,
 }
 
 /**
+ * @internal Add an attribute to the netCDF-4 internal data model.
+ *
+ * @param h5 Pointer to the netCDF-4 file metadata.
+ * @param var Pointer to the netCDF-4 variable metadata. NULL for
+ * global attributes.
+ * @param name Name of the attribute.
+ * @param xtype Type of the attribute.
+ * @param len Number of elements in the attribute array.
+ * @param op Pointer to attribute array data array of length len and
+ * type xtype.
+ *
+ * @return ::NC_NOERR No error.
+ * @return ::NC_ENOMEM Out of memory.
+ * @author Ed Hartnett
+ */
+static int
+nc4_put_att(NC_HDF5_FILE_INFO_T *h5, NC_VAR_INFO_T *var, char *name, nc_type xtype,
+            size_t len, const void *op)
+{
+   NC_ATT_INFO_T *att;
+   NC_ATT_INFO_T **attlist;
+   size_t type_size;
+   int ret;
+
+   /* Check inputs. */
+   assert(h5 && name);
+   if (strlen(name) > NC_MAX_NAME)
+      return NC_EMAXNAME;
+
+   /* Choose the attribute list to add to, a variable or the global
+    * list. */
+   attlist = var ? &var->att : &h5->root_grp->att;
+
+   /* Add to the end of the list of atts. */
+   if ((ret = nc4_att_list_add(attlist, &att)))
+      return ret;
+   att->attnum = var ? var->natts++ : h5->root_grp->natts++;
+   att->created = NC_TRUE;
+      
+   /* Add attribute metadata. */
+   if (!(att->name = strndup(name, NC_MAX_NAME)))
+      return NC_ENOMEM;
+   att->nc_typeid = xtype;
+   att->len = len;
+   LOG((4, "att->name %s att->nc_typeid %d att->len %d", att->name,
+        att->nc_typeid, att->len));
+
+   /* Find the size of the type. */
+   if ((ret = nc4_get_typelen_mem(h5, xtype, 0, &type_size)))
+      return ret;
+   LOG((3, "type_size %d", type_size));
+      
+   /* Allocate memory to hold the data. */
+   if (!(att->data = malloc(type_size * att->len)))
+      return NC_ENOMEM;
+      
+   /* Copy the attribute data. */
+   memcpy(att->data, op, att->len * type_size);
+   return NC_NOERR;
+}
+
+/**
  * @internal Add global attributes for the AB file.
  *
  * @param h5 Pointer to file info.
@@ -237,32 +299,15 @@ add_ab_global_atts(NC_HDF5_FILE_INFO_T *h5, int num_header_atts,
    
    for (int a = 0; a < num_header_atts; a++)
    {
-      NC_ATT_INFO_T *att;
       char att_name[NC_MAX_NAME + 1];
       
       /* Come up with a name. */
       sprintf(att_name, "att_%d", a);
-      
-      /* Add to the end of the list of atts. */
-      if ((ret = nc4_att_list_add(&h5->root_grp->att, &att)))
-         return ret;
-      att->attnum = h5->root_grp->natts++;
-      att->created = NC_TRUE;
-      
-      /* Learn about this attribute. */
-      if (!(att->name = strndup(att_name, NC_MAX_NAME)))
-         return NC_ENOMEM;
-      att->nc_typeid = NC_CHAR;
-      att->len = strlen(header_att[a]);;
-      LOG((4, "att->name %s att->nc_typeid %d att->len %d", att->name,
-           att->nc_typeid, att->len));
-      
-      /* Allocate memory to hold the data. */
-      if (!(att->data = malloc(att->len * sizeof(char))))
-         return NC_ENOMEM;
 
-      /* Copy the data. */
-      memcpy(att->data, header_att[a], att->len);
+      /* Put the att in the metadata. */
+      if ((ret = nc4_put_att(h5, NULL, att_name, NC_CHAR, strlen(header_att[a]),
+                             header_att[a])))
+         return ret;
    }
    
    return NC_NOERR;
@@ -385,44 +430,19 @@ add_ab_var(NC_HDF5_FILE_INFO_T *h5, NC_VAR_INFO_T **varp, char *var_name,
    return NC_NOERR;
 }
 
-static int
-nc4_put_att(NC_HDF5_FILE_INFO_T *h5, NC_VAR_INFO_T *var, char *name, nc_type xtype, size_t len,
-            const void *op)
-{
-   NC_ATT_INFO_T *att;
-   size_t type_size;
-   int ret;
-
-   assert(h5);
-
-   /* Add to the end of the list of atts. */
-   if ((ret = nc4_att_list_add(&var->att, &att)))
-      return ret;
-   att->attnum = var->natts++;
-   att->created = NC_TRUE;
-      
-   /* Add attribute metadata. */
-   if (!(att->name = strndup(name, NC_MAX_NAME)))
-      return NC_ENOMEM;
-   att->nc_typeid = xtype;
-   att->len = len;
-   LOG((4, "att->name %s att->nc_typeid %d att->len %d", att->name,
-        att->nc_typeid, att->len));
-
-   /* Find the size of the type. */
-   if ((ret = nc4_get_typelen_mem(h5, xtype, 0, &type_size)))
-      return ret;
-   LOG((3, "type_size %d", type_size));
-      
-   /* Allocate memory to hold the data. */
-   if (!(att->data = malloc(type_size * att->len)))
-      return NC_ENOMEM;
-      
-   /* Copy the attribute data. */
-   memcpy(att->data, op, att->len * type_size);
-   return NC_NOERR;
-}
-
+/**
+ * @internal Use the name of the variable to determine some attribute
+ * values. These values are from
+ * hycom/ALL/force/src_2.1.27/force2nc.f.
+ *
+ * @param var_name Variable name
+ * @param pname Pointer to storage that gets the long_name.
+ * @param sname Pointer to storage that gets the standard name.
+ * @param units Pointer to storage that gets the units.
+ *
+ * @return ::NC_NOERR No error.
+ * @author Ed Hartnett.
+ */
 static int
 ab_find_var_atts(char *var_name, char *pname, char *sname, char *units)
 {
