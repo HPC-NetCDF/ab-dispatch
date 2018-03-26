@@ -16,6 +16,9 @@
 
 #define AB_DIMSIZE_STRING "i/jdm ="
 #define AB_MAX_DIM_DIGITS 10
+#define UNITS_NAME "units"
+#define PNAME_NAME "long_name"
+#define SNAME_NAME "standard_name"
 
 extern int nc4_vararray_add(NC_GRP_INFO_T *grp, NC_VAR_INFO_T *var);
 
@@ -382,6 +385,56 @@ add_ab_var(NC_HDF5_FILE_INFO_T *h5, NC_VAR_INFO_T **varp, char *var_name,
    return NC_NOERR;
 }
 
+static int
+nc4_put_att(NC_HDF5_FILE_INFO_T *h5, NC_VAR_INFO_T *var, char *name, nc_type xtype, size_t len,
+            const void *op)
+{
+   NC_ATT_INFO_T *att;
+   size_t type_size;
+   int ret;
+
+   assert(h5);
+
+   /* Add to the end of the list of atts. */
+   if ((ret = nc4_att_list_add(&var->att, &att)))
+      return ret;
+   att->attnum = var->natts++;
+   att->created = NC_TRUE;
+      
+   /* Add attribute metadata. */
+   if (!(att->name = strndup(name, NC_MAX_NAME)))
+      return NC_ENOMEM;
+   att->nc_typeid = xtype;
+   att->len = len;
+   LOG((4, "att->name %s att->nc_typeid %d att->len %d", att->name,
+        att->nc_typeid, att->len));
+
+   /* Find the size of the type. */
+   if ((ret = nc4_get_typelen_mem(h5, xtype, 0, &type_size)))
+      return ret;
+   LOG((3, "type_size %d", type_size));
+      
+   /* Allocate memory to hold the data. */
+   if (!(att->data = malloc(type_size * att->len)))
+      return NC_ENOMEM;
+      
+   /* Copy the attribute data. */
+   memcpy(att->data, op, att->len * type_size);
+   return NC_NOERR;
+}
+
+static int
+ab_find_var_atts(char *var_name, char *pname, char *sname, char *units)
+{
+   if (!strcmp(var_name, "surtmp"))
+   {
+      strcpy(pname, " sea surf. temp.  ");
+      strcpy(sname, "sea_surface_temperature");
+      strcpy(units, "degC");
+   }
+   return NC_NOERR;
+}
+
 /**
  * @internal Add attributes to an AB variable.
  *
@@ -403,36 +456,32 @@ add_ab_var_atts(NC_HDF5_FILE_INFO_T *h5, NC_VAR_INFO_T *var, int t_len,
    char att_name[NUM_AB_VAR_ATTS][NC_MAX_NAME + 1] = {TIME_NAME, SPAN_NAME,
                                                       MIN_NAME, MAX_NAME};
    float *att_data[NUM_AB_VAR_ATTS] = {time, span, min, max};
+   char pname[NC_MAX_NAME + 1] = "";
+   char sname[NC_MAX_NAME + 1] = "";
+   char units[NC_MAX_NAME + 1] = "";
    int ret;
 
    /* Check inputs. */
    assert(h5 && var && t_len > 0 && time && span && min && max);
-   
+   LOG((2, "%s", __func__));
+
+   /* Put the four float array attributes. */
    for (int a = 0; a < NUM_AB_VAR_ATTS; a++)
-   {
-      NC_ATT_INFO_T *att;   
-      
-      /* Add to the end of the list of atts. */
-      if ((ret = nc4_att_list_add(&var->att, &att)))
+      if ((ret = nc4_put_att(h5, var, att_name[a], NC_FLOAT, t_len, att_data[a])))
          return ret;
-      att->attnum = var->natts++;
-      att->created = NC_TRUE;
-      
-      /* Add attribute metadata. */
-      if (!(att->name = strndup(att_name[a], NC_MAX_NAME)))
-         return NC_ENOMEM;
-      att->nc_typeid = NC_FLOAT;
-      att->len = t_len;
-      LOG((4, "att->name %s att->nc_typeid %d att->len %d", att->name,
-           att->nc_typeid, att->len));
-      
-      /* Allocate memory to hold the data. */
-      if (!(att->data = malloc(sizeof(float) * att->len)))
-         return NC_ENOMEM;
-      
-      /* Copy the attribute data. */
-      memcpy(att->data, att_data[a], att->len * sizeof(float));
-   }
+
+   if ((ret = ab_find_var_atts(var->name, pname, sname, units)))
+      return ret;
+   LOG((3, "var->name %s pname %s sname %s units %s", var->name, pname, sname, units));
+
+   /* Write other atts if known. */
+   if ((ret = nc4_put_att(h5, var, PNAME_NAME, NC_CHAR, strlen(pname), pname)))
+      return ret;
+   if ((ret = nc4_put_att(h5, var, SNAME_NAME, NC_CHAR, strlen(sname), sname)))
+      return ret;
+   if ((ret = nc4_put_att(h5, var, UNITS_NAME, NC_CHAR, strlen(units), units)))
+      return ret;
+   
    
    return NC_NOERR;
 }
@@ -490,7 +539,7 @@ ab_open_file(const char *path, int mode, NC *nc)
    /* Add necessary structs to hold file metadata. */
    if ((ret = nc4_nc4f_list_add(nc, path, mode)))
       return ret;
-   h5 = (NC_HDF5_FILE_INFO_T *)(nc)->dispatchdata;
+   h5 = (NC_HDF5_FILE_INFO_T *)nc->dispatchdata;
    assert(h5 && h5->root_grp);
    h5->no_write = NC_TRUE;
    h5->root_grp->nc4_info->controller = nc;

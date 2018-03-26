@@ -177,7 +177,7 @@ main()
                          dimids_in, &natts_in)))
       return ret;
    if (strcmp(var_name_in, VAR_NAME) || xtype_in != NC_FLOAT || ndims_in != 3 ||
-       dimids_in[0] != 0 || dimids_in[1] != 1 || dimids_in[2] != 2 || natts_in != 4)
+       dimids_in[0] != 0 || dimids_in[1] != 1 || dimids_in[2] != 2 || natts_in != 7)
        return 111;
 
    /* Check the variable attributes. */
