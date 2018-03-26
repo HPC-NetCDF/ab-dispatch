@@ -140,7 +140,7 @@ main()
    if ((ret = nc_inq(ncid, &ndims, &nvars, &natts, &unlimdimid)))
       return ret;
    /* printf("ndims %d nvars %d natts %d unlimdimid %d\n", ndims, nvars, natts, unlimdimid); */
-   if (ndims != 3 || nvars != 2 ||natts != 1 || unlimdimid != -1)
+   if (ndims != 3 || nvars != 2 ||natts != 2 || unlimdimid != -1)
        return 111;
 
    /* Check the global attribute. */

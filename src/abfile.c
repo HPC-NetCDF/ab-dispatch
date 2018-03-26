@@ -19,7 +19,9 @@
 #define UNITS_NAME "units"
 #define PNAME_NAME "long_name"
 #define SNAME_NAME "standard_name"
-
+#define CONVENTIONS "Conventions"
+#define CF_VERSION "CF-1.0"
+   
 extern int nc4_vararray_add(NC_GRP_INFO_T *grp, NC_VAR_INFO_T *var);
 
 /** @internal These flags may not be set for open mode. */
@@ -296,7 +298,8 @@ add_ab_global_atts(NC_HDF5_FILE_INFO_T *h5, int num_header_atts,
                    char header_att[MAX_HEADER_ATTS][MAX_B_LINE_LEN])
 {
    int ret;
-   
+
+   /* One attribute for each header record in the B file. */
    for (int a = 0; a < num_header_atts; a++)
    {
       char att_name[NC_MAX_NAME + 1];
@@ -309,6 +312,11 @@ add_ab_global_atts(NC_HDF5_FILE_INFO_T *h5, int num_header_atts,
                              header_att[a])))
          return ret;
    }
+
+   /* Some attributes from force2nc.f. */
+   if ((ret = nc4_put_att(h5, NULL, CONVENTIONS, NC_CHAR, strlen(CF_VERSION),
+                          CF_VERSION)))
+      return ret;
    
    return NC_NOERR;
 }
