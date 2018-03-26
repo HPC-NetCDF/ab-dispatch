@@ -426,11 +426,35 @@ nc4_put_att(NC_HDF5_FILE_INFO_T *h5, NC_VAR_INFO_T *var, char *name, nc_type xty
 static int
 ab_find_var_atts(char *var_name, char *pname, char *sname, char *units)
 {
-   if (!strcmp(var_name, "surtmp"))
+#define NUM_ENTRIES 10
+   struct ab_att
    {
-      strcpy(pname, " sea surf. temp.  ");
-      strcpy(sname, "sea_surface_temperature");
-      strcpy(units, "degC");
+      char var_name[NC_MAX_NAME + 1];
+      char pname[NC_MAX_NAME + 1];
+      char sname[NC_MAX_NAME + 1];
+      char units[NC_MAX_NAME + 1];
+   };
+   struct ab_att dict[NUM_ENTRIES] = {
+      {"radflx", " surf. rad. flux ", "surface_net_downward_radiation_flux", "w/m2"},
+      {"shwflx", " surf. shw. flux  ", "surface_net_downward_shortwave_flux", "w/m2"},
+      {"vapmix", " vapor mix. ratio ", "specific_humidity", "kg/kg"},
+      {"airtmp", " air temperature  ", "air_temperature", "degC"},
+      {"surtmp", " sea surf. temp.  ", "sea_surface_temperature", "degC"},
+      {"seatmp", " sea surf. temp.  ", "sea_surface_temperature", "degC"},
+      {"precip", " precipitation    ", "lwe_precipitation_rate", "m/s"},
+      {"wndspd", " 10m wind speed   ", "wind_speed", "m/s"},
+      {"tauewd", " Ewd wind stress  ", "eastward_wind_stress", "N/m^2"},
+      {"taunwd", " Nwd wind stress  ", "northward_wind_stress", "N/m^2"}
+   };
+
+   for (int i = 0; i < NUM_ENTRIES; i++)
+   {
+      if (!strcmp(var_name, dict[i].var_name))
+      {
+         strncpy(pname, dict[i].pname, NC_MAX_NAME);
+         strncpy(sname, dict[i].sname, NC_MAX_NAME);
+         strncpy(units, dict[i].units, NC_MAX_NAME);
+      }
    }
    return NC_NOERR;
 }
@@ -475,14 +499,18 @@ add_ab_var_atts(NC_HDF5_FILE_INFO_T *h5, NC_VAR_INFO_T *var, int t_len,
    LOG((3, "var->name %s pname %s sname %s units %s", var->name, pname, sname, units));
 
    /* Write other atts if known. */
-   if ((ret = nc4_put_att(h5, var, PNAME_NAME, NC_CHAR, strlen(pname), pname)))
-      return ret;
-   if ((ret = nc4_put_att(h5, var, SNAME_NAME, NC_CHAR, strlen(sname), sname)))
-      return ret;
-   if ((ret = nc4_put_att(h5, var, UNITS_NAME, NC_CHAR, strlen(units), units)))
-      return ret;
-   
-   
+   if (strlen(pname))
+      if ((ret = nc4_put_att(h5, var, PNAME_NAME, NC_CHAR, strlen(pname), pname)))
+         return ret;
+
+   if (strlen(sname))
+      if ((ret = nc4_put_att(h5, var, SNAME_NAME, NC_CHAR, strlen(sname), sname)))
+         return ret;
+
+   if (strlen(units))
+      if ((ret = nc4_put_att(h5, var, UNITS_NAME, NC_CHAR, strlen(units), units)))
+         return ret;
+
    return NC_NOERR;
 }
 
