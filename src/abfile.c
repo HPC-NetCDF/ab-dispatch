@@ -89,7 +89,7 @@ parse_b_file(NC_HDF5_FILE_INFO_T *h5, int *num_header_atts,
    *num_header_atts = 0;
 
    /* Read the B file line by line. */
-   while(fgets(line, sizeof(line), ab_file->b_file))
+   while (fgets(line, sizeof(line), ab_file->b_file))
    {
       /* Is this line blank? */
       int blank = 1;
@@ -616,7 +616,7 @@ ab_open_file(const char *path, int mode, NC *nc)
 
    /* Parse the B file. */
    if ((ret = parse_b_file(h5, &num_header_atts, header_att, var_name, &t_len,
-                              &i_len, &j_len, &time, &span, &min, &max)))
+                           &i_len, &j_len, &time, &span, &min, &max)))
       return ret;
    LOG((3, "num_header_atts %d var_name %s t_len %d i_len %d j_len %d",
         num_header_atts, var_name, t_len, i_len, j_len));

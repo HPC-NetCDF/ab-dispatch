@@ -12,7 +12,7 @@ AM_CPPFLAGS = -I$(top_srcdir)/include
 AM_LDFLAGS = ${top_builddir}/src/libncab.la
 
 # The tests.
-AB_DISPATCH_TESTS = tst_read1
+AB_DISPATCH_TESTS = tst_ab_read tst_read1
 check_PROGRAMS = $(AB_DISPATCH_TESTS)
 TESTS = $(AB_DISPATCH_TESTS)
 

@@ -9,6 +9,32 @@
 #include "abdispatch.h"
 
 /**
+ * Change the endianness of an array of floats.
+ *
+ * @param len length of the array.
+ * @param input pointer to array of input data.
+ * @param output pointer that gets the output.
+ *
+ * @return 0 for success.
+ * @author Ed Hartnett
+ */
+int
+change_endianness_32(size_t len, float *input, float *output)
+{
+   assert(len >= 0 && input && output);
+   
+   for (int i = 0; i < len; i++)
+   {
+      char *data_in = (char *)&input[i];
+      char *data_out = (char *)&output[i];
+      for (int j = 0; j < 4; j++)
+         data_out[j] = data_in[4 - j - 1];
+   }
+   
+   return 0;
+}
+
+/**
  * @internal Get coordinate variable data. AB Format coordinate
  * variables are always NC_FLOAT32.
  *
@@ -75,7 +101,6 @@ get_ab_coord_vara(NC *nc, int ncid, int varid, const size_t *startp,
    
    return NC_NOERR;
 }
-
 
 /**
  * Round up to a multiple of a number. According to Alan Wallcraft: 
@@ -218,7 +243,9 @@ AB_get_vara(int ncid, int varid, const size_t *startp,
          LOG((3, "ftell %d", ftell(ab_file->a_file)));
          if ((fread(bufr, sizeof(float), countp[2], ab_file->a_file) != countp[2]))
             return NC_EIO;
-         if ((ret = reverse_floats(bufr, ip, countp[2])))
+         /* if ((ret = reverse_floats(bufr, ip, countp[2]))) */
+         /*    return ret; */
+         if ((ret = change_endianness_32(countp[2], bufr, ip)))
             return ret;
          ip = (float *)ip + countp[2];
          free(bufr);
