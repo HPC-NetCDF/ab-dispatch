@@ -258,10 +258,9 @@ main()
          return ret;
       if (abs(data_in - expected_val) > EPSILON)
          return 111;
-      printf("data_in %f\n", data_in);
    }
    
-   /* Get all i's. */
+   /* Get all j's, one i. */
    {
       size_t start[NDIMS3] = {0, 0, 0};
       size_t count[NDIMS3] = {1, 1, J_LEN};
@@ -287,7 +286,7 @@ main()
       if (abs(min - expected_min) > EPSILON ||abs(max - expected_max) > EPSILON)
          return 111;
       
-      printf("min %f max %f\n", min, max);
+      /* printf("min %f max %f\n", min, max); */
    }
 
    /* Get two rows of i. */
@@ -306,8 +305,10 @@ main()
       /* Find min/max. */
       for (int j = 0; j < 2; j++)
       {
+         printf("\n\nj %d\n", j);
          for (int i = 0; i < I_LEN; i++)
          {
+            printf("i %d %f", i, data_in[j][i]);
             if (data_in[j][i] < min)
                min = data_in[j][i];
             if (data_in[j][i] > max)
@@ -318,103 +319,8 @@ main()
       /* Did we get correct results? */
       if (abs(min - expected_min) > EPSILON ||abs(max - expected_max) > EPSILON)
          return 111;
-      
-      printf("min %f max %f\n", min, max);
+      /* printf("min %f max %f\n", min, max); */
    }
-
-   /* Get all j's. */
-   {
-      size_t start[NDIMS3] = {0, 0, 0};
-      size_t count[NDIMS3] = {1, 1, J_LEN};
-      float data_in[J_LEN];
-      float max = 0, min = 100;
-      float expected_min = 12.554479;
-      float expected_max = 28.332735;
-
-      /* Get data. */
-      if ((ret = nc_get_vara_float(ncid, 1, start, count, data_in)))
-         return ret;
-
-      /* Find min/max. */
-      for (int j = 0; j < J_LEN; j++)
-      {
-         if (data_in[j] < min)
-            min = data_in[j];
-         if (data_in[j] > max)
-            max = data_in[j];
-      }
-
-      /* Did we get correct results? */
-      /* if (abs(min - expected_min) > EPSILON ||abs(max - expected_max) > EPSILON) */
-      /*    return 111; */
-      
-      printf("min %f max %f\n", min, max);
-   }
-
-   /* /\* Get two rows of i. *\/ */
-   /* { */
-   /*    size_t start[NDIMS3] = {0, 0, 0}; */
-   /*    size_t count[NDIMS3] = {1, 2, J_LEN}; */
-   /*    float data_in[2][J_LEN]; */
-   /*    float max = 0, min = 100; */
-   /*    float expected_min = 12.444799; */
-   /*    float expected_max = 28.332735; */
-
-   /*    /\* Get data. *\/ */
-   /*    if ((ret = nc_get_vara_float(ncid, 1, start, count, (float *)data_in))) */
-   /*       return ret; */
-
-   /*    /\* Find min/max. *\/ */
-   /*    for (int j = 0; j < 2; j++) */
-   /*    { */
-   /*       for (int i = 0; i < I_LEN; i++) */
-   /*       { */
-   /*          if (data_in[j][i] < min) */
-   /*             min = data_in[j][i]; */
-   /*          if (data_in[j][i] > max) */
-   /*             max = data_in[j][i]; */
-   /*       } */
-   /*    } */
-
-   /*    /\* Did we get correct results? *\/ */
-   /*    /\* if (abs(min - expected_min) > EPSILON ||abs(max - expected_max) > EPSILON) *\/ */
-   /*    /\*    return 111; *\/ */
-      
-   /*    printf("min %f max %f\n", min, max); */
-   /* } */
-
-   /* /\* Get a whole record. *\/ */
-   /* { */
-   /*    size_t start[NDIMS3] = {0, 0, 0}; */
-   /*    size_t count[NDIMS3] = {1, I_LEN, J_LEN}; */
-   /*    float data_in[I_LEN][J_LEN]; */
-   /*    float expected_min = 12.444799; */
-   /*    float expected_max = 28.332735; */
-
-   /*    /\* Get data. *\/ */
-   /*    if ((ret = nc_get_vara_float(ncid, 1, start, count, (float *)data_in))) */
-   /*       return ret; */
-
-   /*    /\* Find min/max. *\/ */
-   /*    for (int i = 0; i < I_LEN; i++) */
-   /*    { */
-   /*       float max = 0, min = 100; */
-   /*       for (int j = 0; j < J_LEN; j++) */
-   /*       { */
-   /*          if (data_in[j][i] == fill_value) */
-   /*             continue; */
-   /*          if (data_in[j][i] < min) */
-   /*             min = data_in[j][i]; */
-   /*          if (data_in[j][i] > max) */
-   /*             max = data_in[j][i]; */
-   /*       } */
-   /*       printf("i %d min %f max %f\n", i, min, max); */
-   /*    } */
-
-   /*    /\* Did we get correct results? *\/ */
-   /*    /\* if (abs(min - expected_min) > EPSILON ||abs(max - expected_max) > EPSILON) *\/ */
-   /*    /\*    return 111; *\/ */
-   /* } */
 
    /* Get a whole record. */
    {
@@ -432,8 +338,10 @@ main()
       /* Find min/max. */
       for (int j = 0; j < J_LEN; j++)
       {
+         printf("\n\nj %d\n", j);
          for (int i = 0; i < I_LEN; i++)
          {
+            printf("i %d %f", i, data_in[j][i] == fill_value ? -42 : data_in[j][i]);
             if (data_in[j][i] == fill_value)
                continue;
             if (data_in[j][i] < min)

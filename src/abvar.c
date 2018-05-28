@@ -7,6 +7,7 @@
 #include <nc4internal.h>
 #include "nc4dispatch.h"
 #include "abdispatch.h"
+#include "ablogging.h"
 
 /**
  * Change the endianness of an array of floats.
@@ -22,6 +23,7 @@ int
 change_endianness_32(size_t len, float *input, float *output)
 {
    assert(len >= 0 && input && output);
+   LOG((4, "%s len %d", __func__, len));
    
    for (int i = 0; i < len; i++)
    {
@@ -36,7 +38,9 @@ change_endianness_32(size_t len, float *input, float *output)
 
 /**
  * @internal Get coordinate variable data. AB Format coordinate
- * variables are always NC_FLOAT32.
+ * variables are always NC_FLOAT32. Since they are scanned from the A
+ * file, where they are ASCII text, there is no need to swap
+ * endianness.
  *
  * @param ncid File ID.
  * @param varid Variable ID.
@@ -60,7 +64,6 @@ get_ab_coord_vara(NC *nc, int ncid, int varid, const size_t *startp,
    NC_VAR_INFO_T *var;
    NC_ATT_INFO_T *att = NULL;
    int range_error = 0;
-   /* int i = 0; */
    int ret;
 
    /* Check inputs. */
@@ -127,48 +130,6 @@ round_up(int num, int multiple)
 }
 
 /**
- * @internal Reverse endianness of a float.
- *
- * @param fin The input float.
- *
- * @return the reversed float.
- */
-static float
-reverse_float(const float fin)
-{
-   float val;
-   char *in = (char *)&fin;
-   char *out = (char *)&val;
-   
-   for (int b = 0; b < sizeof(float); b++)
-      out[b] = in[sizeof(float) - b - 1];
-   
-   return val;
-}
-
-/** 
- * @internal Reverse an array of floats.
- *
- * @param bufr_in Pointer to the start of buffer of floats to convert.
- * @param bufr_out Pointer that will get reversed floats.
- * @param num Number of floats to convert.
- *
- * @return ::NC_NOERR No error.
- * @author Ed Hartnett
- */
-static int
-reverse_floats(float *bufr_in, float *bufr_out, size_t num)
-{
-
-   float *in = bufr_in;
-   float *out = bufr_out;
-   for (int n = 0; n < num; n++)
-      *out++ = reverse_float(*in++);
-
-   return NC_NOERR;
-}
-
-/**
  * Read an array of values. This is called by nc_get_vara() for
  * netCDF-4 files, as well as all the other nc_get_vara_*
  * functions. HDF4 files are handled as a special case.
@@ -223,12 +184,13 @@ AB_get_vara(int ncid, int varid, const size_t *startp,
 
    /* Size of a record. */
    size_t rec_len = round_up(j_len * i_len, 4096) * sizeof(float);
-   /* size_t num_elem = j_len * i_len; */
 
    /* Find each requested record. */
    for (int rec = 0; rec < countp[0]; rec++)
    {
       long rec_pos = startp[0] * rec_len;
+
+      LOG((3, "reading rec %d rec_pos %d", rec, rec_pos));
       for (int j = 0; j < countp[1]; j++)
       {
          float *bufr;
@@ -243,8 +205,6 @@ AB_get_vara(int ncid, int varid, const size_t *startp,
          LOG((3, "ftell %d", ftell(ab_file->a_file)));
          if ((fread(bufr, sizeof(float), countp[2], ab_file->a_file) != countp[2]))
             return NC_EIO;
-         /* if ((ret = reverse_floats(bufr, ip, countp[2]))) */
-         /*    return ret; */
          if ((ret = change_endianness_32(countp[2], bufr, ip)))
             return ret;
          ip = (float *)ip + countp[2];

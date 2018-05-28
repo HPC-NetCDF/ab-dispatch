@@ -187,7 +187,7 @@ parse_b_file(NC_HDF5_FILE_INFO_T *h5, int *num_header_atts,
       /* Get the time values. */
       while ((tok = strtok(tok, " ")) != NULL)
       {
-         LOG((3, "tok_count %d tok %s", tok_count, tok));
+         LOG((5, "tok_count %d tok %s", tok_count, tok));
          if (tok_count == 0 && !var_named)
          {
             strncpy(var_name, tok, strlen(tok) - strlen(index(tok, ':')));
@@ -214,7 +214,7 @@ parse_b_file(NC_HDF5_FILE_INFO_T *h5, int *num_header_atts,
          tok = NULL;
       }
       time_count++;
-      LOG((3, "%s", line));
+      LOG((4, "%s", line));
    }
    
    return NC_NOERR;
@@ -237,8 +237,8 @@ parse_b_file(NC_HDF5_FILE_INFO_T *h5, int *num_header_atts,
  * @author Ed Hartnett
  */
 static int
-nc4_put_att(NC_HDF5_FILE_INFO_T *h5, NC_VAR_INFO_T *var, char *name, nc_type xtype,
-            size_t len, const void *op)
+nc4_put_att(NC_HDF5_FILE_INFO_T *h5, NC_VAR_INFO_T *var, char *name,
+            nc_type xtype, size_t len, const void *op)
 {
    NC_ATT_INFO_T *att;
    NC_ATT_INFO_T **attlist;
@@ -249,6 +249,8 @@ nc4_put_att(NC_HDF5_FILE_INFO_T *h5, NC_VAR_INFO_T *var, char *name, nc_type xty
    assert(h5 && name);
    if (strlen(name) > NC_MAX_NAME)
       return NC_EMAXNAME;
+
+   LOG((2, "%s name %s xtype %d len %d", __func__, name, xtype, len));
 
    /* Choose the attribute list to add to, a variable or the global
     * list. */
