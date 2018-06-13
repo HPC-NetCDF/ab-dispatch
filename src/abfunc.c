@@ -67,7 +67,7 @@ AB_inq_format(int ncid, int *formatp)
       return NC_EBADID;
 
    /* UF0 is the format. */
-   *formatp = NC_FORMATX_UF0;
+   *formatp = NC_FORMATX_UDF0;
 
    return NC_NOERR;
 }
@@ -80,7 +80,7 @@ AB_inq_format(int ncid, int *formatp)
  * @param formatp a pointer that gets the extended format. Note that
  * this is not the same as the format provided by nc_inq_format(). The
  * extended foramt indicates the dispatch layer model. NetCDF-4 files
- * will always get NC_FORMATX_NC4 for netCDF files, NC_FORMATX_UF0
+ * will always get NC_FORMATX_NC4 for netCDF files, NC_FORMATX_UDF0
  * for AB files.
  * @param modep a pointer that gets the open/create mode associated with
  * this file. Ignored if NULL.
@@ -105,7 +105,7 @@ AB_inq_format_extended(int ncid, int *formatp, int *modep)
       *modep = (nc->mode|NC_NETCDF4);
 
    if (formatp) 
-      *formatp = NC_FORMATX_UF0;
+      *formatp = NC_FORMATX_UDF0;
    
    return NC_NOERR;
 }

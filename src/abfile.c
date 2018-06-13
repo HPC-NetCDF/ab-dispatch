@@ -237,14 +237,11 @@ add_ab_global_atts(NC_HDF5_FILE_INFO_T *h5, int num_header_atts,
       sprintf(att_name, "att_%d", a);
       
       /* Add to the end of the list of atts. */
-      if ((ret = nc4_att_list_add(&h5->root_grp->att, &att)))
+      if ((ret = nc4_att_list_add(h5->root_grp->att, att_name, &att)))
          return ret;
-      att->attnum = h5->root_grp->natts++;
       att->created = NC_TRUE;
       
       /* Learn about this attribute. */
-      if (!(att->name = strndup(att_name, NC_MAX_NAME)))
-         return NC_ENOMEM;
       att->nc_typeid = NC_CHAR;
       att->len = strlen(header_att[a]);;
       LOG((4, "att->name %s att->nc_typeid %d att->len %d", att->name,
@@ -275,19 +272,12 @@ add_ab_dims(NC_HDF5_FILE_INFO_T *h5, NC_DIM_INFO_T **dim, int t_len,
 {
    int ret;
    char dim_name[AB_NDIMS3][NC_MAX_NAME + 1] = {TIME_NAME, I_NAME, J_NAME};
+   int dim_len[AB_NDIMS3] = {t_len, i_len, j_len};
    
    for (int d = 0; d < AB_NDIMS3; d++)
-   {
-      if ((ret = nc4_dim_list_add(&h5->root_grp->dim, &dim[d])))
+      if ((ret = nc4_dim_list_add(h5->root_grp, dim_name[d], dim_len[d],
+                                  h5->root_grp->nc4_info->next_dimid++, &dim[d])))
          return ret;
-      if (!(dim[d]->name = strndup(dim_name[d], NC_MAX_NAME)))
-         return NC_ENOMEM;
-      dim[d]->dimid = h5->root_grp->nc4_info->next_dimid++;
-      dim[d]->hash = hash_fast(dim_name[d], strlen(dim_name[d]));
-   }
-   dim[0]->len = t_len;
-   dim[1]->len = i_len;
-   dim[2]->len = j_len;
 
    return NC_NOERR;
 }
@@ -319,34 +309,22 @@ add_ab_var(NC_HDF5_FILE_INFO_T *h5, NC_VAR_INFO_T **varp, char *var_name,
       return NC_EINVAL;
    
    /* Create and init a variable metadata struct for the data variable. */
-   if ((ret = nc4_var_add(varp)))
+   if ((ret = nc4_var_list_add(h5->root_grp, var_name, ndims, varp)))
       return ret;
    var = *varp;
-   var->varid = h5->root_grp->nvars++;
    var->created = NC_TRUE;
    var->written_to = NC_TRUE;
-
-   /* Add the var to the variable array, growing it as needed. */
-   if ((ret = nc4_vararray_add(h5->root_grp, var)))
-      return ret;
-
-   /* Remember var name. */
-   if (!(var->name = strndup(var_name, NC_MAX_NAME)))
-      return NC_ENOMEM;
-
-   /* Create hash for names for quick lookups. */
-   var->hash = hash_fast(var->name, strlen(var->name));
 
    /* Fill special type_info struct for variable type information. */
    if (!(var->type_info = calloc(1, sizeof(NC_TYPE_INFO_T)))) 
       return NC_ENOMEM;
-   var->type_info->nc_typeid = xtype;
+   var->type_info->hdr.id = xtype;
 
    /* Indicate that the variable has a pointer to the type */
    var->type_info->rc++;
 
    /* Get the size of the type. */
-   if ((ret = nc4_get_typelen_mem(h5, var->type_info->nc_typeid, 0,
+   if ((ret = nc4_get_typelen_mem(h5, var->type_info->hdr.id,
                                      &var->type_info->size))) 
       return ret;
 
@@ -368,8 +346,7 @@ add_ab_var(NC_HDF5_FILE_INFO_T *h5, NC_VAR_INFO_T **varp, char *var_name,
    if (!(var->dimids = malloc(sizeof(int) * var->ndims))) 
       return NC_ENOMEM;
    memcpy(var->dimids, dimids, var->ndims * sizeof(float));
-   
-   
+
    return NC_NOERR;
 }
 
@@ -404,14 +381,11 @@ add_ab_var_atts(NC_HDF5_FILE_INFO_T *h5, NC_VAR_INFO_T *var, int t_len,
       NC_ATT_INFO_T *att;   
       
       /* Add to the end of the list of atts. */
-      if ((ret = nc4_att_list_add(&var->att, &att)))
+      if ((ret = nc4_att_list_add(var->att, att_name[a], &att)))
          return ret;
-      att->attnum = var->natts++;
       att->created = NC_TRUE;
       
       /* Add attribute metadata. */
-      if (!(att->name = strndup(att_name[a], NC_MAX_NAME)))
-         return NC_ENOMEM;
       att->nc_typeid = NC_FLOAT;
       att->len = t_len;
       LOG((4, "att->name %s att->nc_typeid %d att->len %d", att->name,
@@ -630,7 +604,7 @@ AB_close(int ncid)
 
    /* Delete all the list contents for vars, dims, and atts, in each
     * group. */
-   if ((ret = nc4_rec_grp_del(&h5->root_grp, h5->root_grp)))
+   if ((ret = nc4_rec_grp_del(h5->root_grp)))
       return ret;
 
    /* Free the nc4_info struct; above code should have reclaimed

@@ -43,10 +43,10 @@ AC_CONFIG_LINKS([test/surtmp_100l.a:test/surtmp_100l.a])
 AC_CONFIG_LINKS([test/surtmp_100l.b:test/surtmp_100l.b])
 
 # Checks for libraries.
-AC_CHECK_LIB(netcdf, nc_def_user_format)
-if test x${ac_cv_lib_netcdf_nc_def_user_format} != xyes; then
-   AC_MSG_ERROR([Must have netcdf])
-fi
+dnl AC_CHECK_LIB(netcdf, nc_def_user_format)
+dnl if test x${ac_cv_lib_netcdf_nc_def_user_format} != xyes; then
+dnl    AC_MSG_ERROR([Must have netcdf])
+dnl fi
 
 # Checks for header files.
 AC_CHECK_HEADERS([stddef.h stdlib.h])
@@ -60,6 +60,5 @@ AC_CHECK_FUNCS([strdup])
 
 AC_CONFIG_FILES([Makefile
                  include/Makefile
-                 test/Makefile
                  src/Makefile])
 AC_OUTPUT

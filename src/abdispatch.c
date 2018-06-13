@@ -15,7 +15,7 @@
 
 NC_Dispatch AB_dispatcher = {
 
-NC_FORMATX_UF0,
+NC_FORMATX_UDF0,
 
 NC_RO_create,
 AB_open,
